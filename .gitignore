@@ -165,3 +165,7 @@ tree-sitter-cpp/
 tree-sitter-csharp/
 
 .DS_STORE
+
+# review/ working data
+review/data
+review/pch
