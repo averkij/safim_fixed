@@ -22,7 +22,10 @@ def check_syntax(code):
 
 def get_function_call_params(node):
     positional_args = [ast.dump(arg) for arg in node.args]
-    keyword_args = {kw.arg: ast.dump(kw.value) for kw in node.keywords}
+    keyword_args = [(kw.arg, ast.dump(kw.value)) for kw in node.keywords]
+    # Keep every occurrence. Unpacking also makes keyword order significant.
+    if all(name is not None for name, _ in keyword_args):
+        keyword_args.sort()
     return positional_args, keyword_args
 
 
