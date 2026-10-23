@@ -27,6 +27,8 @@ def get_function_call_params(node):
 
 
 def function_calls_match(call1, call2):
+    if ast.dump(call1.func, include_attributes=False) != ast.dump(call2.func, include_attributes=False):
+        return False
     params1 = get_function_call_params(call1)
     params2 = get_function_call_params(call2)
     return params1 == params2
