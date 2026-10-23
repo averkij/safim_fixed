@@ -1,6 +1,7 @@
 import os
 import hashlib
 import json
+import re
 from pathlib import Path
 from argparse import Namespace
 
@@ -657,11 +658,80 @@ class MagicCoderModel(ModelWrapper):
             raise NotImplementedError()
 
 
+NATIVE_FIM_MODELS = {
+    "Qwen/Qwen2.5-Coder-3B": dict(revision="09d9bc5d376b0cfa0100a0694ea7de7232525803",
+        markers=("<|fim_prefix|>", "<|fim_suffix|>", "<|fim_middle|>"), order="psm"),
+    "JetBrains/Mellum-4b-base": dict(revision="83cce2605fbdf6a3868627e9b0a5924e0072b94d",
+        markers=("<fim_prefix>", "<fim_suffix>", "<fim_middle>"), order="spm"),
+}
+
+
+class NativeFIMModel(ModelWrapper):
+    """Explicit pinned base-model protocols, independent of legacy adapters."""
+    def __init__(self, model_name, revision=None, context_limit=None, device=None, dtype=None, block_comments=False):
+        if block_comments:
+            raise ValueError("Comment-token banning is not defined for the native FIM protocol")
+        protocol = NATIVE_FIM_MODELS[model_name]
+        revision = revision or protocol["revision"]
+        if not re.fullmatch(r"[0-9a-f]{40}", revision):
+            raise ValueError("Native FIM model revision must be an immutable 40-character commit")
+        device, dtype = device or "cuda", dtype or "float16"
+        if device not in {"cpu", "cuda"} or dtype not in {"float32", "float16", "bfloat16"}:
+            raise ValueError("Unsupported device/dtype")
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name, revision=revision, trust_remote_code=False)
+        config = transformers.AutoConfig.from_pretrained(model_name, revision=revision, trust_remote_code=False)
+        native_limit = config.max_position_embeddings
+        self.max_length = context_limit if context_limit is not None else native_limit
+        if not 0 < self.max_length <= native_limit:
+            raise ValueError("Context limit must be positive and within the model configuration")
+        self.markers, self.fim_order = protocol["markers"], protocol["order"]
+        for marker in self.markers:
+            ids = self.tokenizer.encode(marker, add_special_tokens=False)
+            if len(ids) != 1 or ids[0] == self.tokenizer.unk_token_id:
+                raise ValueError(f"Tokenizer does not define the expected FIM marker: {marker}")
+        self.model = AutoModelForCausalLM.from_pretrained(model_name, revision=revision, config=config,
+            trust_remote_code=False, torch_dtype=getattr(torch, dtype), low_cpu_mem_usage=True).to(device).eval()
+        self.protocol_configuration = dict(model_revision=revision, tokenizer_revision=revision,
+            fim_order=self.fim_order, fim_markers=list(self.markers), context_limit=self.max_length,
+            device=device, dtype=dtype, temperature=0.2, top_p=0.95, top_k=0, repetition_penalty=1.0)
+
+    def count_prompt_tokens(self, prompt):
+        return len(self.tokenizer.encode(prompt, add_special_tokens=False))
+
+    def assemble_infilling_prompt(self, prefix, suffix, reverse=False):
+        if reverse:
+            raise ValueError("reverse_infilling is not defined for the native model-card protocol")
+        pre, suf, mid = self.markers
+        if self.fim_order == "psm":
+            return pre + prefix + suf + suffix + mid
+        return suf + suffix + pre + prefix + mid
+
+    def invoke(self, prompt):
+        encoded = self.tokenizer(prompt, add_special_tokens=False, truncation=False,
+            return_tensors="pt", return_token_type_ids=False).to(self.model.device)
+        length = encoded["input_ids"].shape[1]
+        self.check_context(length)
+        with torch.no_grad():
+            generated = self.model.generate(**encoded, do_sample=True, temperature=0.2,
+                top_p=0.95, top_k=0, repetition_penalty=1.0, num_return_sequences=1,
+                max_new_tokens=self.max_new_tokens, eos_token_id=self.tokenizer.eos_token_id,
+                pad_token_id=self.tokenizer.pad_token_id if self.tokenizer.pad_token_id is not None else self.tokenizer.eos_token_id)
+        return self.tokenizer.decode(generated[0, length:], skip_special_tokens=True,
+                                     clean_up_tokenization_spaces=False)
+
+
 def build_model(args: Namespace) -> ModelWrapper:
     max_new_tokens = getattr(args, "max_new_tokens", 128)
     if max_new_tokens < 1:
         raise ValueError("max_new_tokens must be positive")
-    if args.model_name.startswith("codellama/CodeLlama"):
+    native_options = {key: getattr(args, key, None) for key in ("model_revision", "context_limit", "device", "dtype")}
+    if args.model_name not in NATIVE_FIM_MODELS and any(value is not None for value in native_options.values()):
+        raise ValueError("Explicit revision/context/device/dtype options require a registered native FIM adapter")
+    if args.model_name in NATIVE_FIM_MODELS:
+        model_wrapper = NativeFIMModel(args.model_name, revision=native_options["model_revision"],
+            context_limit=native_options["context_limit"], device=native_options["device"],
+            dtype=native_options["dtype"], block_comments=args.block_comments)
+    elif args.model_name.startswith("codellama/CodeLlama"):
         model_wrapper = CodeLlama(args.model_name, 4096, args.block_comments)
     elif args.model_name.startswith("facebook/incoder"):
         model_wrapper = Incoder(args.model_name, 2048, args.block_comments)
@@ -695,6 +765,9 @@ def build_model(args: Namespace) -> ModelWrapper:
     excluded = {"cache_path", "output_path", "checkpoint_every"}
     model_wrapper.cache_configuration = {key: value for key, value in vars(args).items()
                                          if key not in excluded}
+    protocol_configuration = getattr(model_wrapper, "protocol_configuration", {})
+    if isinstance(protocol_configuration, dict):
+        model_wrapper.cache_configuration.update(protocol_configuration)
     model_wrapper.cache_configuration["wrapper_sha256"] = hashlib.sha256(
         Path(__file__).read_bytes()).hexdigest()
     tokenizer_config = getattr(getattr(model_wrapper, "tokenizer", None), "init_kwargs", {})

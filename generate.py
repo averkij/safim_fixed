@@ -40,6 +40,10 @@ def main():
     parser.add_argument("mode", type=str)
     parser.add_argument("--block_comments", action="store_true")
     parser.add_argument("--seed", type=int, default=0, help="Base seed; each prompt gets a stable derived seed")
+    parser.add_argument("--model-revision", help="Immutable native-adapter model/tokenizer commit; defaults to the registry pin")
+    parser.add_argument("--context-limit", type=int, help="Native-adapter context limit, at most the model configuration limit")
+    parser.add_argument("--device", choices=["cpu", "cuda"], help="Native-adapter device (default cuda)")
+    parser.add_argument("--dtype", choices=["float32", "float16", "bfloat16"], help="Native-adapter weight dtype (default float16)")
     parser.add_argument("--post_processors", type=str, nargs="+")
     parser.add_argument("--max-new-tokens", type=int, default=128, help="Requested output token cap (historical default: 128)")
     parser.add_argument("--api-timeout", type=float, default=120.0, help="Remote request timeout in seconds per attempt")
@@ -77,6 +81,7 @@ def main():
             manifest["dataset"] = getattr(samples, "provenance", None)
             manifest["expected"] = len(samples)
             model_wrapper = build_model(args)
+            manifest["model"] = getattr(model_wrapper, "cache_configuration", None)
             for sample in tqdm(samples):
                 manifest["active_task"] = sample["task_id"]
                 item = handle_example(sample, args.completion_type, args.mode, model_wrapper, cache, args.post_processors)

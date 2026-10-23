@@ -26,6 +26,37 @@ not a lock of every transitive package. The historical installation below is a
 separate reproduction profile. Do not combine its old SDK/parser pins with the
 modern profile.
 
+Native base-model FIM adapters are registered for `Qwen/Qwen2.5-Coder-3B`
+(revision `09d9bc5d376b0cfa0100a0694ea7de7232525803`, prefix/suffix/middle order)
+and `JetBrains/Mellum-4b-base` (revision
+`83cce2605fbdf6a3868627e9b0a5924e0072b94d`, suffix/prefix/middle order).
+These are distinct model identities; they do not alias similarly named models.
+The tokenizer and weights use the same immutable revision, with remote code
+disabled and marker validation. Native adapters use temperature0.2, top-p0.95,
+top-k0, repetition penalty1, and the configured output cap. Their explicit
+protocol and resolved identities are saved under `model` in generation metadata.
+
+For these adapters, `--model-revision` accepts a 40-character commit;
+`--context-limit` may reduce the configured model context; `--device` defaults
+to cuda and `--dtype` to float16. CPU plumbing can use `--device cpu --dtype float32`.
+The native contexts are32768 (Qwen) and8192 (Mellum); use a shared declared cap
+such as8192 for controlled comparisons. Native adapters reject reverse_infilling
+and comment-token banning because those alternative protocols are not defined
+here. Native-only options on historical adapters fail rather than being ignored.
+No score equivalence with historical adapter decoding defaults is implied.
+
+Example (run separately for each registered model with separate outputs/cache):
+
+```bash
+python generate.py Qwen/Qwen2.5-Coder-3B block_v2 cache-qwen.json qwen-seed0.jsonl infilling \
+  --context-limit 8192 --max-new-tokens 512 --seed 0 --post_processors truncate_block
+```
+
+This requests pretrained weight downloads and inference when run. Adapter checks
+in the correction study used real pinned tokenizers/configs and random tiny CPU
+models, not pretrained model evaluation. Keep each seed replicate independent
+and record hardware, complete environment, actual truncation and output budget.
+
 The fixed loader reads UTF-8 JSONL directly from dataset commit
 `be132cc15372e90b6f03a608e77f2d940e384edb` using `huggingface_hub`.
 It does not execute a dataset loading script or follow a moving repository head.
