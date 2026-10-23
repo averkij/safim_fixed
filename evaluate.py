@@ -119,6 +119,7 @@ def main():
     parser.add_argument("--port", type=int, default=5000)
     parser.add_argument("--exec-timeout", type=float, default=120, help="ExecEval read timeout in seconds")
     parser.add_argument("--exec-profile", help="JSON runtime/complete resource-limit profile; saved with result metadata")
+    parser.add_argument("--force-execution", action="store_true", help="Execute test-bearing tasks even for exact reference matches")
     parser.add_argument("--allow-partial", action="store_true", help="Score only supplied known task IDs; report a subset score")
     args = parser.parse_args()
 
@@ -136,7 +137,8 @@ def main():
     pass_cnt, total = 0, 0
     manifest_path = Path(str(args.output_path) + ".run.json")
     manifest = dict(status="running", completion_type=args.completion_type, partial=args.allow_partial,
-                    expected=len(problems), evaluated=0, passed=0, exec_timeout=args.exec_timeout, execution=execution_metadata)
+                    expected=len(problems), evaluated=0, passed=0, exec_timeout=args.exec_timeout, execution=execution_metadata,
+                    force_execution=args.force_execution, methods=dict(reference_match=0, execution=0, syntax_match=0))
     def save_manifest():
         temporary = manifest_path.with_suffix(manifest_path.suffix + ".tmp")
         temporary.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
@@ -147,11 +149,14 @@ def main():
             completion = completions[problem["task_id"]]
             try:
                 if problem.get("unit_tests"):
-                    if completion['completion'] == problem["ground_truth"]:
+                    if completion['completion'] == problem["ground_truth"] and not args.force_execution:
+                        method = "reference_match"
                         result, passed = "PASSED", True
                     else:
+                        method = "execution"
                         result, passed = run_test(problem, completion)
                 else:
+                    method = "syntax_match"
                     passed = syntax_match(completion['completion'], problem["ground_truth"], problem["lang"])
                     result = "EXACT_MATCH" if passed else "WRONG_ANSWER"
                 if not completion['completion'].strip() and not passed:
@@ -162,16 +167,17 @@ def main():
                         result = "COMPILATION_ERROR"
             except ExecEvalError as error:
                 output.write(json.dumps(dict(task_id=problem["task_id"], result="SERVER_ERROR", passed=None,
-                                             check_result=0, error=str(error)[:1000])) + "\n")
+                                             check_result=0, evaluation_method=method, error=str(error)[:1000])) + "\n")
                 output.flush()
                 manifest.update(status="incomplete", failed_task=problem["task_id"])
                 save_manifest()
                 parser.exit(1, f"Evaluation incomplete: {error}\n")
-            output.write(json.dumps(dict(task_id=problem["task_id"], result=result, passed=passed, check_result=0)) + "\n")
+            output.write(json.dumps(dict(task_id=problem["task_id"], result=result, passed=passed, check_result=0, evaluation_method=method)) + "\n")
             output.flush()
             pass_cnt += int(passed)
             total += 1
             manifest.update(evaluated=total, passed=pass_cnt)
+            manifest["methods"][method] += 1
             save_manifest()
     manifest["status"] = "complete"
     save_manifest()

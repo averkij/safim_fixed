@@ -65,6 +65,13 @@ them as uncaptured. Capture actual image/compiler/runtime/configuration versions
 for comparisons: a runtime label is not a version check, and profile provenance
 is a declaration rather than automatic attestation of a remote server.
 
+`--force-execution` bypasses the exact-reference shortcut for tasks with tests.
+Use it to validate references against the actual engine and when measuring
+execution-based scores. Default shortcut behavior remains available, but each
+result now labels `reference_match`, `execution`, or `syntax_match`, and the run
+metadata counts them. An exact reference match alone does not verify engine
+health. API tasks without execution tests retain their syntax-matching protocol.
+
 FIM prompts reserve the requested output budget and retain the model's marker
 sequence. If necessary, context is removed from the beginning of the prefix and
 the end of the suffix, reducing the longer character span by one eighth per
