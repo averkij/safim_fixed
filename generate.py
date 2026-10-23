@@ -37,9 +37,12 @@ def main():
     parser.add_argument("mode", type=str)
     parser.add_argument("--block_comments", action="store_true")
     parser.add_argument("--post_processors", type=str, nargs="+")
+    parser.add_argument("--max-new-tokens", type=int, default=128, help="Requested output token cap (historical default: 128)")
     parser.add_argument("--checkpoint-every", type=int, default=100, help="Atomic cache checkpoint interval; output rows flush individually")
 
     args = parser.parse_args()
+    if args.max_new_tokens < 1:
+        parser.error("--max-new-tokens must be positive")
     if args.checkpoint_every < 1:
         parser.error("--checkpoint-every must be positive")
     if Path(args.cache_path).resolve() == Path(args.output_path).resolve():

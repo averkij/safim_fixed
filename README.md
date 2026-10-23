@@ -17,6 +17,15 @@ results.
 
 ## Environment Setup
 
+Generation accepts `--max-new-tokens` (positive integer, historical default 128).
+The requested cap is saved in the output `.run.json` configuration and applies to
+all wrappers, including the OpenAI wrapper. Use the same declared budget when
+comparing models; token counts still depend on each model's tokenizer. Increasing
+the cap is a protocol change, not evidence of an improved model or a guaranteed
+score increase. Context-window handling can further limit output and must also
+be controlled. Failed/interrupted generation returns nonzero and preserves
+completed JSONL rows; a `.run.json` status other than `complete` is not a full run.
+
 Python version: 3.8.12
 
 CUDA version: 11.7

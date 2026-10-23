@@ -10,6 +10,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, NoBadWordsLogitsPr
 
 
 class ModelWrapper:
+    max_new_tokens = 128
     def invoke(self, prompt: str) -> str:
         raise NotImplementedError()
 
@@ -54,7 +55,7 @@ class CodeLlama(ModelWrapper):
             do_sample=True,
             num_return_sequences=1,
             temperature=0.2,
-            max_new_tokens=128,
+            max_new_tokens=self.max_new_tokens,
             eos_token_id=self.tokenizer.eos_token_id,
             top_p=0.95,
             handle_long_generation="hole",
@@ -111,7 +112,7 @@ class Incoder(ModelWrapper):
                 do_sample=True,
                 num_return_sequences=1,
                 temperature=0.2,
-                max_length=min(input_ids_len + 128, self.max_length),
+                max_length=min(input_ids_len + self.max_new_tokens, self.max_length),
                 top_p=0.95,
                 logits_processor=self.logits_processor
             )
@@ -154,6 +155,7 @@ class OpenAIModel(ModelWrapper):
             try:
                 result = openai.ChatCompletion.create(
                     model=self.model_name,
+                    max_tokens=self.max_new_tokens,
                     messages=[
                         {"role": "user", "content": prompt},
                     ]
@@ -212,7 +214,7 @@ class CodegenModel(ModelWrapper):
                 do_sample=True,
                 num_return_sequences=1,
                 temperature=0.2,
-                max_length=min(input_ids_len + 128, self.max_length),
+                max_length=min(input_ids_len + self.max_new_tokens, self.max_length),
                 pad_token_id=50256,
                 top_p=0.95,
                 use_cache=True,
@@ -265,7 +267,7 @@ class StarcoderModel(ModelWrapper):
                 do_sample=True,
                 num_return_sequences=1,
                 temperature=0.2,
-                max_length=min(input_ids_len + 128, self.max_length),
+                max_length=min(input_ids_len + self.max_new_tokens, self.max_length),
                 top_p=0.95,
                 logits_processor=self.logits_processor
             )
@@ -317,7 +319,7 @@ class DeepseekModel(ModelWrapper):
                     do_sample=True,
                     num_return_sequences=1,
                     temperature=0.2,
-                    max_length=min(input_ids_len + 128, self.max_length),
+                    max_length=min(input_ids_len + self.max_new_tokens, self.max_length),
                     top_p=0.95,
                     logits_processor=self.logits_processor
                 )
@@ -370,7 +372,7 @@ class PhiModel(ModelWrapper):
                 do_sample=True,
                 num_return_sequences=1,
                 temperature=0.2,
-                max_length=min(input_ids_len + 128, self.max_length),
+                max_length=min(input_ids_len + self.max_new_tokens, self.max_length),
                 pad_token_id=50256,
                 top_p=0.95,
                 use_cache=True,
@@ -420,7 +422,7 @@ class MixtralModel(ModelWrapper):
                 do_sample=True,
                 num_return_sequences=1,
                 temperature=0.2,
-                max_length=min(input_ids_len + 128, self.max_length),
+                max_length=min(input_ids_len + self.max_new_tokens, self.max_length),
                 top_p=0.95,
                 use_cache=True,
                 logits_processor=self.logits_processor
@@ -474,7 +476,7 @@ class WizardModel(ModelWrapper):
                 do_sample=True,
                 num_return_sequences=1,
                 temperature=0.2,
-                max_length=min(input_ids_len + 128, self.max_length),
+                max_length=min(input_ids_len + self.max_new_tokens, self.max_length),
                 top_p=0.95,
                 use_cache=True,
                 logits_processor=self.logits_processor
@@ -537,7 +539,7 @@ class SantacoderModel(ModelWrapper):
                 do_sample=True,
                 num_return_sequences=1,
                 temperature=0.2,
-                max_length=min(input_ids_len + 128, self.max_length),
+                max_length=min(input_ids_len + self.max_new_tokens, self.max_length),
                 top_p=0.95,
                 pad_token_id=self.tokenizer.unk_token_id,
                 logits_processor=self.logits_processor
@@ -584,7 +586,7 @@ class MagicCoderModel(ModelWrapper):
             do_sample=True,
             num_return_sequences=1,
             temperature=0.2,
-            max_new_tokens=128,
+            max_new_tokens=self.max_new_tokens,
             top_p=0.95,
             handle_long_generation="hole",
             logits_processor=self.logits_processor
@@ -599,6 +601,9 @@ class MagicCoderModel(ModelWrapper):
 
 
 def build_model(args: Namespace) -> ModelWrapper:
+    max_new_tokens = getattr(args, "max_new_tokens", 128)
+    if max_new_tokens < 1:
+        raise ValueError("max_new_tokens must be positive")
     if args.model_name.startswith("codellama/CodeLlama"):
         model_wrapper = CodeLlama(args.model_name, 4096, args.block_comments)
     elif args.model_name.startswith("facebook/incoder"):
@@ -623,4 +628,5 @@ def build_model(args: Namespace) -> ModelWrapper:
         model_wrapper = MagicCoderModel(args.model_name, 4096, args.block_comments)
     else:
         raise ValueError(args.model_name)
+    model_wrapper.max_new_tokens = max_new_tokens
     return model_wrapper
