@@ -665,14 +665,25 @@ def truncate_control(sample, completion):
     if sample["lang"] == "python":
         return truncate_to_first_line(completion)
     else:
+        raw = completion.encode("utf-8")
+        ignored = bytearray(len(raw))
+        stack = [get_parser(sample["lang"]).parse(raw).root_node]
+        while stack:
+            node = stack.pop()
+            if "string" in node.type or "comment" in node.type or node.type in {"char_literal", "character_literal"}:
+                ignored[node.start_byte:node.end_byte] = b"\x01" * (node.end_byte - node.start_byte)
+            else:
+                stack.extend(node.children)
         depth = 0
-        for i, ch in enumerate(completion):
-            if ch == "(":
+        for i, ch in enumerate(raw):
+            if ignored[i]:
+                continue
+            if ch == ord("("):
                 depth += 1
-            elif ch == ")":
+            elif ch == ord(")"):
                 depth -= 1
             if depth == -1:
-                return completion[:i]
+                return raw[:i].decode("utf-8")
         return completion
 
 
