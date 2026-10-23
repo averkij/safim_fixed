@@ -119,9 +119,9 @@ def main():
                     passed = False
         if not completion['completion'].strip() and not passed:
             result = "EMPTY"
-        if problem["lang"] == "python" and not passed:
+        if problem["lang"] == "python" and not passed and completion['completion'].strip() and problem.get("unit_tests"):
             full_code = problem['eval_prompt'].replace("{{completion}}", completion['completion'])
-            if "unit_tests" in problem and not check_syntax(full_code):
+            if not check_syntax(full_code):
                 result = "COMPILATION_ERROR"
         pass_cnt += int(passed)
         total += 1
