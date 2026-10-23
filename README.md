@@ -40,6 +40,13 @@ sampling variability; one seed is not an uncertainty estimate. GPU kernels,
 dependency/hardware changes and remote service behavior can still prevent exact
 repeatability. Cache reuse is not an independent replicate.
 
+`show_detailed_results.py --format json` reports exact passed/total counts,
+percentage, the percentage-point size of one task, and explicit unmeasured
+sampling variability. The default CSV layout/precision is preserved for scripts;
+its decimal digits do not express statistical confidence. Scores are empirical
+pass@1 with one completion per task. Report independent seed replicates and
+paired task outcomes when comparing model differences.
+
 FIM prompts reserve the requested output budget and retain the model's marker
 sequence. If necessary, context is removed from the beginning of the prefix and
 the end of the suffix, reducing the longer character span by one eighth per

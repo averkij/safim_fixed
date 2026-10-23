@@ -9,11 +9,26 @@ from collections import defaultdict
 from data_utils import load_dataset, stream_jsonl
 
 
+def metric_summary(pass_cnt, total):
+    return {
+        "metric": "empirical pass@1 (one completion per task)",
+        "uncertainty": None,
+        "uncertainty_note": "Sampling variability not measured; decimal digits are not confidence. Use independent generation seeds for repeated runs.",
+        "groups": {
+            lang: dict(passed=pass_cnt.get(lang, 0), total=total.get(lang, 0),
+                       percent=100 * pass_cnt.get(lang, 0) / total[lang] if total.get(lang) else None,
+                       one_task_percentage_points=100 / total[lang] if total.get(lang) else None)
+            for lang in ["cpp", "java", "python", "csharp", "all"]
+        },
+    }
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("completion_type", type=str)
     parser.add_argument("result_path", type=str)
     parser.add_argument("--allow-partial", action="store_true", help="Summarize an explicitly selected subset")
+    parser.add_argument("--format", choices=["csv", "json"], default="csv", help="JSON includes exact counts and uncertainty status")
     args = parser.parse_args()
 
     problems = load_dataset(args.completion_type)
@@ -66,6 +81,15 @@ def main():
 
     ALL_OUTCOMES = ['EMPTY', 'COMPILATION_ERROR', 'RUNTIME_ERROR', 'MEMORY_LIMIT_EXCEEDED', 'TIME_LIMIT_EXCEEDED',
                     'WRONG_ANSWER', 'MIXED']
+    summary = metric_summary(pass_cnt, total)
+    summary["errors"] = {outcome: results_cnt[outcome] for outcome in ALL_OUTCOMES}
+    summary["dataset_variant"] = args.completion_type
+    summary["partial"] = seen != set(problem_to_lang)
+    print(f"Empirical pass@1: {pass_cnt['all']}/{total['all']} tasks; sampling variability not measured. "
+          "Decimal digits are not confidence.", file=sys.stderr)
+    if args.format == "json":
+        print(json.dumps(summary, indent=2))
+        return
     writer = csv.writer(sys.stdout)
     # writer.writerow(['C++', 'Java', 'Python', 'C#', 'All'] + ALL_OUTCOMES)
     writer.writerow(
