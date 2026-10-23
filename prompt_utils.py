@@ -1,4 +1,5 @@
 from typing import Iterable
+import re
 
 import jinja2
 
@@ -561,7 +562,7 @@ def truncate_for_fewshot(code):
     return code
 
 
-def has_unparsable_context(sample):
+def has_unparsable_context(sample, completion=""):
     """A parser cannot safely trim a hole in context it cannot parse itself.
 
     C++ macros are a common example: the compiler expands them, Tree-sitter
@@ -571,11 +572,19 @@ def has_unparsable_context(sample):
     baseline = sample["eval_prompt"].replace("{{completion}}", placeholder)
     visitor = ErrorCheckVisitor()
     visitor(get_parser(sample["lang"]).parse(baseline.encode("utf-8")))
-    return visitor.error_cnt > 0
+    if visitor.error_cnt > 0:
+        return True
+    if sample["lang"] == "cpp":
+        # Function-like macros may expand into loops/statements. Parsing their
+        # unexpanded invocation as a function call is not a reliable boundary.
+        names = re.findall(r"(?m)^\s*#\s*define\s+([A-Za-z_]\w*)\(", sample["eval_prompt"])
+        if any(re.search(r"\b" + re.escape(name) + r"\s*\(", completion) for name in names):
+            return True
+    return False
 
 
 def truncate_line_until_parsable(sample, code):
-    if has_unparsable_context(sample):
+    if has_unparsable_context(sample, code):
         return code
     parser = get_parser(sample["lang"])
     lines = code.splitlines(keepends=True)
@@ -609,7 +618,7 @@ def match_prefix_and_suffix(l1, l2):
 
 
 def truncate_line_until_block(sample, code):
-    if has_unparsable_context(sample):
+    if has_unparsable_context(sample, code):
         return code
     parser = get_parser(sample["lang"])
     lines = code.splitlines(keepends=True)
