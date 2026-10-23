@@ -17,6 +17,15 @@ results.
 
 ## Environment Setup
 
+For the maintained Python 3.12 profile, create a separate virtual environment
+and install `python -m pip install -r requirements-modern.txt`. It pins the
+primary dependencies, including compatible Transformers/Hub/tokenizers versions
+and the parser wheels. Record the complete installed environment and PyTorch
+CPU/CUDA build for each experiment; this is a tested primary-dependency profile,
+not a lock of every transitive package. The historical installation below is a
+separate reproduction profile. Do not combine its old SDK/parser pins with the
+modern profile.
+
 The fixed loader reads UTF-8 JSONL directly from dataset commit
 `be132cc15372e90b6f03a608e77f2d940e384edb` using `huggingface_hub`.
 It does not execute a dataset loading script or follow a moving repository head.
