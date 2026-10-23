@@ -17,6 +17,13 @@ results.
 
 ## Environment Setup
 
+The fixed loader reads UTF-8 JSONL directly from dataset commit
+`be132cc15372e90b6f03a608e77f2d940e384edb` using `huggingface_hub`.
+It does not execute a dataset loading script or follow a moving repository head.
+Generation/evaluation metadata records the configuration, revision, compressed
+file SHA256 and row count. Evaluation rejects conflicting recorded input
+identities; legacy prediction files without identity still need manual provenance.
+
 Generation accepts `--max-new-tokens` (positive integer, historical default 128).
 The requested cap is saved in the output `.run.json` configuration and applies to
 all wrappers, including the OpenAI wrapper. Use the same declared budget when

@@ -74,6 +74,7 @@ def main():
     try:
         with open(args.output_path, "w", encoding="utf-8") as f:
             samples = load_dataset(args.completion_type)
+            manifest["dataset"] = getattr(samples, "provenance", None)
             manifest["expected"] = len(samples)
             model_wrapper = build_model(args)
             for sample in tqdm(samples):

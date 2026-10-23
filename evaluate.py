@@ -102,13 +102,18 @@ def validate_completions(rows, problems, allow_partial=False):
     return completions
 
 
-def validate_input_variant(path, completion_type):
+def validate_input_variant(path, completion_type, dataset=None):
     metadata = Path(str(path) + ".run.json")
     if metadata.exists():
         run = json.loads(metadata.read_text(encoding="utf-8"))
         declared = run.get("configuration", {}).get("completion_type")
         if declared is not None and declared != completion_type:
             raise ValueError(f"Predictions declare {declared}, but evaluation requests {completion_type}; dataset variants are distinct protocols")
+        generated_data = run.get("dataset")
+        if dataset is not None and generated_data is not None:
+            for key in ("repository", "revision", "configuration", "sha256"):
+                if generated_data.get(key) != dataset.get(key):
+                    raise ValueError(f"Prediction/evaluation dataset identity differs: {key}")
 
 
 def main():
@@ -124,8 +129,9 @@ def main():
     args = parser.parse_args()
 
     problems = load_dataset(args.completion_type)
+    dataset = getattr(problems, "provenance", None)
     try:
-        validate_input_variant(args.completion_path, args.completion_type)
+        validate_input_variant(args.completion_path, args.completion_type, dataset)
         completions = validate_completions(stream_jsonl(args.completion_path), problems, args.allow_partial)
     except ValueError as error:
         parser.error(str(error))
@@ -138,7 +144,7 @@ def main():
     manifest_path = Path(str(args.output_path) + ".run.json")
     manifest = dict(status="running", completion_type=args.completion_type, partial=args.allow_partial,
                     expected=len(problems), evaluated=0, passed=0, exec_timeout=args.exec_timeout, execution=execution_metadata,
-                    force_execution=args.force_execution, methods=dict(reference_match=0, execution=0, syntax_match=0))
+                    force_execution=args.force_execution, methods=dict(reference_match=0, execution=0, syntax_match=0), dataset=dataset)
     def save_manifest():
         temporary = manifest_path.with_suffix(manifest_path.suffix + ".tmp")
         temporary.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
