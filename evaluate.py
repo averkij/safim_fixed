@@ -35,18 +35,22 @@ def function_calls_match(call1, call2):
 
 
 def syntax_match(code1, code2, lang):
-    code1 = re.sub(r'\s+', '', code1).strip()
-    code2 = re.sub(r'\s+', '', code2).strip()
     if lang == "python":
+        code1 = code1.strip()
+        code2 = code2.strip()
         try:
             tree1 = ast.parse(code1, mode='eval')
             tree2 = ast.parse(code2, mode='eval')
 
             if isinstance(tree1.body, ast.Call) and isinstance(tree2.body, ast.Call):
                 return function_calls_match(tree1.body, tree2.body)
-        except:
-            pass  # If parsing fails, fall back to simple string comparison
+            return ast.dump(tree1, include_attributes=False) == ast.dump(tree2, include_attributes=False)
+        except SyntaxError:
+            # Do not erase literal contents or merge tokens in malformed code.
+            return code1 == code2
 
+    code1 = re.sub(r'\s+', '', code1).strip()
+    code2 = re.sub(r'\s+', '', code2).strip()
     return code1 == code2
 
 
