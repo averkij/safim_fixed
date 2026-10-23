@@ -6,6 +6,10 @@ from typing import List, Optional, Tuple, Union
 import requests
 
 
+class ExecEvalError(RuntimeError):
+    """Infrastructure failure; never a model compilation or test failure."""
+
+
 class ExecOutcome(Enum):
     PASSED = "PASSED"  # code executes and output matches expected output
     WRONG_ANSWER = "WRONG_ANSWER"  # code executes and output does NOT matches expected output
@@ -41,7 +45,10 @@ class ExtendedUnittest:
 class APICommunication:
     _session: requests.Session
 
-    def __init__(self, server_url: str = "http://localhost:5000"):
+    def __init__(self, server_url: str = "http://localhost:5000", timeout: float = 120):
+        if timeout <= 0:
+            raise ValueError("ExecEval timeout must be positive")
+        self.timeout = (5, timeout)
         self._session = requests.Session()
         self.execute_code_url = f"{server_url}/api/execute_code"
         self.get_runtimes_url = f"{server_url}/api/all_runtimes"
@@ -53,7 +60,12 @@ class APICommunication:
         self._session.close()
 
     def get_runtimes(self):
-        return self._session.get(self.get_runtimes_url).json()
+        try:
+            response = self._session.get(self.get_runtimes_url, timeout=self.timeout)
+            response.raise_for_status()
+            return response.json()
+        except (requests.RequestException, ValueError) as error:
+            raise ExecEvalError(f"ExecEval runtime query failed: {error}") from error
 
     def execute_code(
         self,
@@ -92,18 +104,33 @@ class APICommunication:
             stop_on_first_fail=stop_on_first_fail,
             use_sanitizer=use_sanitizer, )
         try:
-            json_response = self._session.post(
-                self.execute_code_url, json=request_body, headers={"Content-Type": "application/json"}, ).json()
-        except requests.exceptions.JSONDecodeError:
-            json_response = {
-                "task_id": task_id,
-                "data": [{"exec_outcome": "COMPILATION_ERROR", "result": "", "passed": False}]
-            }
-
-        if "data" not in json_response:
-            return json_response, sample_id, task_id
-
-        return (json_response["data"], sample_id, task_id,)
+            response = self._session.post(
+                self.execute_code_url, json=request_body, headers={"Content-Type": "application/json"}, timeout=self.timeout)
+            response.raise_for_status()
+            json_response = response.json()
+        except (requests.RequestException, ValueError) as error:
+            raise ExecEvalError(f"ExecEval request failed for {task_id}: {error}") from error
+        data = json_response.get("data") if isinstance(json_response, dict) else None
+        if not isinstance(data, list) or not data or len(data) > len(unittests):
+            raise ExecEvalError(f"Invalid ExecEval result list for {task_id}")
+        allowed = {outcome.value for outcome in ExecOutcome}
+        failed = False
+        for test in data:
+            if not isinstance(test, dict) or "exec_outcome" not in test:
+                raise ExecEvalError(f"Missing ExecEval outcome for {task_id}")
+            outcome = test["exec_outcome"]
+            if outcome is None:
+                if not failed:
+                    raise ExecEvalError(f"Unexecuted test without an earlier failure for {task_id}")
+            elif not isinstance(outcome, str) or outcome not in allowed:
+                raise ExecEvalError(f"Unknown ExecEval outcome for {task_id}: {outcome}")
+            elif outcome != "PASSED":
+                failed = True
+            if test.get("result") is not None and not isinstance(test["result"], str):
+                raise ExecEvalError(f"Invalid ExecEval result text for {task_id}")
+        if not failed and len(data) != len(unittests):
+            raise ExecEvalError(f"Incomplete passing ExecEval response for {task_id}")
+        return data, sample_id, task_id
 
 
 LANG_TO_COMPILER = {
@@ -120,15 +147,12 @@ def run_test(problem, completion):
     result = execeval.execute_code(
         LANG_TO_COMPILER[problem['lang']], code, problem['unit_tests'], task_id=problem['task_id']
     )[0]
-    if not (isinstance(result, list) and isinstance(result[0], dict)):
-        print(result)
-        return "COMPILATION_ERROR", False
     for o in result:
-        if o['result'] is not None and len(o['result']) > 1000:
+        if o.get('result') is not None and len(o['result']) > 1000:
             o['result'] = o['result'][:1000]
     return result, all(o['exec_outcome'] == 'PASSED' for o in result)
 
 
 def build_execeval(args: Namespace):
     global execeval
-    execeval = APICommunication(server_url=f"http://localhost:{args.port}")
+    execeval = APICommunication(server_url=f"http://localhost:{args.port}", timeout=getattr(args, "exec_timeout", 120))

@@ -25,6 +25,8 @@ def load_evaluator(source):
         module = types.ModuleType(name)
         for attribute in attributes:
             setattr(module, attribute, unavailable)
+        if name == "exec_utils":
+            module.ExecEvalError = RuntimeError
         dependencies[name] = module
     evaluator = types.ModuleType("safim_api_scoring_under_test")
     with patch.dict("sys.modules", dependencies):

@@ -1,6 +1,7 @@
 import argparse
 import ast
 import json
+from pathlib import Path
 import re
 
 import tqdm
@@ -8,7 +9,7 @@ from tqdm import tqdm
 
 from ast_utils import ErrorCheckVisitor, get_parser
 from data_utils import load_dataset, stream_jsonl
-from exec_utils import build_execeval, run_test
+from exec_utils import ExecEvalError, build_execeval, run_test
 
 
 def check_syntax(code):
@@ -83,6 +84,7 @@ def main():
     parser.add_argument("completion_path", type=str)
     parser.add_argument("output_path", type=str)
     parser.add_argument("--port", type=int, default=5000)
+    parser.add_argument("--exec-timeout", type=float, default=120, help="ExecEval read timeout in seconds")
     parser.add_argument("--allow-partial", action="store_true", help="Score only supplied known task IDs; report a subset score")
     args = parser.parse_args()
 
@@ -97,45 +99,49 @@ def main():
     build_execeval(args)
 
     pass_cnt, total = 0, 0
-    results = []
-    for problem in tqdm(problems):
-        if problem["task_id"] not in completions:
-            result = "EMPTY"
-            passed = False
-        else:
+    manifest_path = Path(str(args.output_path) + ".run.json")
+    manifest = dict(status="running", completion_type=args.completion_type, partial=args.allow_partial,
+                    expected=len(problems), evaluated=0, passed=0, exec_timeout=args.exec_timeout)
+    def save_manifest():
+        temporary = manifest_path.with_suffix(manifest_path.suffix + ".tmp")
+        temporary.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+        temporary.replace(manifest_path)
+    save_manifest()
+    with open(args.output_path, "w", encoding="utf-8") as output:
+        for problem in tqdm(problems):
             completion = completions[problem["task_id"]]
-            if "unit_tests" in problem and problem["unit_tests"]:
-                if completion['completion'] == problem["ground_truth"]:
-                    result = "PASSED"
-                    passed = True
+            try:
+                if problem.get("unit_tests"):
+                    if completion['completion'] == problem["ground_truth"]:
+                        result, passed = "PASSED", True
+                    else:
+                        result, passed = run_test(problem, completion)
                 else:
-                    result, passed = run_test(problem, completion)
-            else:
-                if syntax_match(completion['completion'], problem["ground_truth"], problem["lang"]):
-                    result = "EXACT_MATCH"
-                    passed = True
-                else:
-                    result = "WRONG_ANSWER"
-                    passed = False
-        if not completion['completion'].strip() and not passed:
-            result = "EMPTY"
-        if problem["lang"] == "python" and not passed and completion['completion'].strip() and problem.get("unit_tests"):
-            full_code = problem['eval_prompt'].replace("{{completion}}", completion['completion'])
-            if not check_syntax(full_code):
-                result = "COMPILATION_ERROR"
-        pass_cnt += int(passed)
-        total += 1
-        results.append(
-            {
-                "task_id": problem["task_id"], "result": result, "passed": passed, "check_result": 0
-            }
-        )
-
+                    passed = syntax_match(completion['completion'], problem["ground_truth"], problem["lang"])
+                    result = "EXACT_MATCH" if passed else "WRONG_ANSWER"
+                if not completion['completion'].strip() and not passed:
+                    result = "EMPTY"
+                if problem["lang"] == "python" and not passed and completion['completion'].strip() and problem.get("unit_tests"):
+                    full_code = problem['eval_prompt'].replace("{{completion}}", completion['completion'])
+                    if not check_syntax(full_code):
+                        result = "COMPILATION_ERROR"
+            except ExecEvalError as error:
+                output.write(json.dumps(dict(task_id=problem["task_id"], result="SERVER_ERROR", passed=None,
+                                             check_result=0, error=str(error)[:1000])) + "\n")
+                output.flush()
+                manifest.update(status="incomplete", failed_task=problem["task_id"])
+                save_manifest()
+                parser.exit(1, f"Evaluation incomplete: {error}\n")
+            output.write(json.dumps(dict(task_id=problem["task_id"], result=result, passed=passed, check_result=0)) + "\n")
+            output.flush()
+            pass_cnt += int(passed)
+            total += 1
+            manifest.update(evaluated=total, passed=pass_cnt)
+            save_manifest()
+    manifest["status"] = "complete"
+    save_manifest()
     print(f"Pass {pass_cnt} / Total {total}")
     print(f"Pass@1: {pass_cnt / total * 100 :.04f}%")
-    with open(args.output_path, "w", encoding="utf-8") as f:
-        for r in results:
-            f.write(json.dumps(r) + "\n")
 
 
 if __name__ == '__main__':
