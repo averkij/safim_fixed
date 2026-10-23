@@ -528,23 +528,31 @@ def extract_code_from_chat_model(code, lang, completion_type):
     res = []
     res_inline = []
     cur_code_block = []
+    fence_char, fence_length, fence_indent = None, 0, 0
     for line in code.splitlines(keepends=True):
-        if line.startswith("```"):
+        match = re.match(r"^([ \t]*)(`{3,}|~{3,})(.*)$", line.rstrip("\r\n"))
+        if match and (not in_code or (match[2][0] == fence_char and len(match[2]) >= fence_length and not match[3].strip())):
             if in_code:
                 in_code = False
                 res.append("".join(cur_code_block).rstrip())
                 cur_code_block = []
             else:
                 in_code = True
+                fence_char, fence_length, fence_indent = match[2][0], len(match[2]), len(match[1])
         else:
             if in_code:
-                cur_code_block.append(line)
+                leading = len(line) - len(line.lstrip(" \t"))
+                cur_code_block.append(line[min(fence_indent, leading):])
             else:
                 if "`" in line:
                     start = line.find('`') + 1
                     end = line.find('`', start)
                     if end != -1:
                         res_inline.append(line[start:end])
+
+    if in_code:
+        # Token-limited replies can end before the closing fence.
+        res.append("".join(cur_code_block).rstrip())
 
     if not res:
         if not res_inline:
