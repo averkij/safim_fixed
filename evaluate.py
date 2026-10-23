@@ -53,9 +53,33 @@ def syntax_match(code1, code2, lang):
             # Do not erase literal contents or merge tokens in malformed code.
             return code1 == code2
 
-    code1 = re.sub(r'\s+', '', code1).strip()
-    code2 = re.sub(r'\s+', '', code2).strip()
-    return code1 == code2
+    tokens1, tokens2 = expression_tokens(code1, lang), expression_tokens(code2, lang)
+    if tokens1 is None or tokens2 is None:
+        return code1.strip() == code2.strip()
+    return tokens1 == tokens2
+
+
+def expression_tokens(code, lang):
+    """Ignore formatting between tokens, never literal contents or boundaries."""
+    prefix, suffix = {
+        # C++ API references also contain object declarations/initializers.
+        "cpp": ("void __safim_scope() { ", "; }"),
+        "java": ("class __Safim { Object value = ", "; }"),
+        "csharp": ("class __Safim { object value = ", "; }"),
+    }[lang]
+    tree = get_parser(lang).parse((prefix + code.strip() + suffix).encode("utf-8"))
+    if tree.root_node.has_error:
+        return None
+    tokens, stack = [], [tree.root_node]
+    while stack:
+        node = stack.pop()
+        if "comment" in node.type:
+            continue
+        if not node.children:
+            tokens.append((node.type, node.text))
+        else:
+            stack.extend(reversed(node.children))
+    return tokens
 
 
 def validate_completions(rows, problems, allow_partial=False):

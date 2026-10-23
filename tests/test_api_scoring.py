@@ -10,8 +10,8 @@ EVALUATE_SOURCE = (pathlib.Path(__file__).resolve().parents[1] / "evaluate.py").
 
 
 def load_evaluator(source):
-    # These imports are unrelated to API matching. Fail loudly if a test uses
-    # execution or dataset machinery, rather than silently mocking its result.
+    # Execution/dataset calls stay isolated. Non-Python matching uses the real
+    # declared parser profile; Python matching still uses the stdlib AST.
     def unavailable(*args, **kwargs):
         raise AssertionError("Execution/dataset dependencies are outside this unit test")
 
@@ -27,6 +27,9 @@ def load_evaluator(source):
             setattr(module, attribute, unavailable)
         if name == "exec_utils":
             module.ExecEvalError = RuntimeError
+        if name == "ast_utils":
+            from parser_support import load_ast
+            module.get_parser = load_ast().get_parser
         dependencies[name] = module
     evaluator = types.ModuleType("safim_api_scoring_under_test")
     with patch.dict("sys.modules", dependencies):
