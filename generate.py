@@ -38,11 +38,15 @@ def main():
     parser.add_argument("--block_comments", action="store_true")
     parser.add_argument("--post_processors", type=str, nargs="+")
     parser.add_argument("--max-new-tokens", type=int, default=128, help="Requested output token cap (historical default: 128)")
+    parser.add_argument("--api-timeout", type=float, default=120.0, help="Remote request timeout in seconds per attempt")
+    parser.add_argument("--api-max-retries", type=int, default=2, help="SDK retries after the initial remote attempt")
     parser.add_argument("--checkpoint-every", type=int, default=100, help="Atomic cache checkpoint interval; output rows flush individually")
 
     args = parser.parse_args()
     if args.max_new_tokens < 1:
         parser.error("--max-new-tokens must be positive")
+    if args.api_timeout <= 0 or args.api_max_retries < 0:
+        parser.error("API timeout must be positive and retries nonnegative")
     if args.checkpoint_every < 1:
         parser.error("--checkpoint-every must be positive")
     if Path(args.cache_path).resolve() == Path(args.output_path).resolve():

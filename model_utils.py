@@ -1,5 +1,4 @@
 import os
-import time
 from argparse import Namespace
 
 import openai
@@ -137,37 +136,30 @@ class Incoder(ModelWrapper):
 
 
 class OpenAIModel(ModelWrapper):
-    def __init__(self, model_name, max_length):
+    def __init__(self, model_name, max_length, timeout=120.0, max_retries=2):
+        if timeout <= 0 or max_retries < 0:
+            raise ValueError("API timeout must be positive and retries nonnegative")
         self.model_name = model_name
         self.max_length = max_length
         self.tokenizer = tiktoken.encoding_for_model(model_name)
-        openai.api_key = os.environ["OPENAI_API_KEY"]
+        self.client = openai.OpenAI(timeout=timeout, max_retries=max_retries)
 
     def invoke(self, prompt: str) -> str:
-        cnt = 0
         tokenized = self.tokenizer.encode_ordinary(prompt)
         if len(tokenized) > self.max_length:
             tokenized = tokenized[-self.max_length:]
             prompt = self.tokenizer.decode(tokenized)
-        while True:
-            if cnt == 999:
-                return ""
-            try:
-                result = openai.ChatCompletion.create(
-                    model=self.model_name,
-                    max_tokens=self.max_new_tokens,
-                    messages=[
-                        {"role": "user", "content": prompt},
-                    ]
-                )
-                break
-            except Exception as e:
-                if "Please try again with a different prompt" in str(e):
-                    return ""
-                cnt += 1
-                time.sleep(5)
-                print(f"{e}")
-        return result["choices"][0]["message"]["content"]
+        result = self.client.chat.completions.create(
+            model=self.model_name,
+            max_completion_tokens=self.max_new_tokens,
+            temperature=0.2,
+            top_p=0.95,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        content = result.choices[0].message.content
+        if not isinstance(content, str):
+            raise RuntimeError("API returned no text completion")
+        return content
 
     def assemble_infilling_prompt(self, prefix: str, suffix: str, reverse: bool = False) -> str:
         if reverse:
@@ -609,7 +601,9 @@ def build_model(args: Namespace) -> ModelWrapper:
     elif args.model_name.startswith("facebook/incoder"):
         model_wrapper = Incoder(args.model_name, 2048, args.block_comments)
     elif args.model_name.startswith("gpt-"):
-        model_wrapper = OpenAIModel(args.model_name, 4096 - 32)
+        model_wrapper = OpenAIModel(args.model_name, 4096 - 32,
+                                    timeout=getattr(args, "api_timeout", 120.0),
+                                    max_retries=getattr(args, "api_max_retries", 2))
     elif args.model_name.startswith("Salesforce/codegen"):
         model_wrapper = CodegenModel(args.model_name, 2048, args.block_comments)
     elif args.model_name.startswith("bigcode/starcoder"):

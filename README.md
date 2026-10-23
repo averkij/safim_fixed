@@ -26,7 +26,16 @@ score increase. Context-window handling can further limit output and must also
 be controlled. Failed/interrupted generation returns nonzero and preserves
 completed JSONL rows; a `.run.json` status other than `complete` is not a full run.
 
-Python version: 3.8.12
+The remote wrapper uses the OpenAI 2.x client with explicit temperature 0.2,
+top-p 0.95 and `max_completion_tokens`. `OPENAI_API_KEY` is read by the SDK.
+`--api-timeout` defaults to 120 seconds per attempt and `--api-max-retries` to 2.
+Exhausted requests or missing text fail generation instead of becoming empty
+predictions. Models that reject these decoding parameters fail visibly; they
+require a separately declared protocol. No model identifier is substituted.
+
+Historical local environment: Python 3.8.12. The remote client requires Python
+3.9 or newer; SDK interface checks use Python 3.12.3 and openai 2.29.0. Install
+`openai==2.29.0` instead of the historical 0.28.1 pin below for remote generation.
 
 CUDA version: 11.7
 

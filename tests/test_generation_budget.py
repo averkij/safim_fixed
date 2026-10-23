@@ -30,7 +30,9 @@ class GenerationBudgetTests(unittest.TestCase):
         model = wrapper(module, "OpenAIModel")
         model.max_new_tokens = 256
         model.invoke("prompt")
-        self.assertEqual(module.openai.ChatCompletion.create.call_args.kwargs["max_tokens"], 256)
+        call = model.client.chat.completions.create.call_args or module.openai.ChatCompletion.create.call_args
+        kwargs = call.kwargs
+        self.assertEqual(kwargs.get("max_completion_tokens", kwargs.get("max_tokens")), 256)
 
     def test_builder_retains_default_and_applies_override(self):
         module = load_models()

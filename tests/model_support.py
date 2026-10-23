@@ -31,6 +31,8 @@ def load_models():
     for name in ["AutoModelForCausalLM", "AutoTokenizer", "NoBadWordsLogitsProcessor"]:
         setattr(dependencies["transformers"], name, Mock())
     dependencies["openai"].ChatCompletion = types.SimpleNamespace(create=Mock(return_value={"choices": [{"message": {"content": "completion"}}]}))
+    dependencies["openai"].OpenAI = Mock()
+    dependencies["tiktoken"].encoding_for_model = Mock(return_value=Tokenizer())
     module = types.ModuleType("models_under_test")
     with patch.dict(sys.modules, dependencies):
         exec(compile(source_at("model_utils.py"), "model_utils.py", "exec"), module.__dict__)
@@ -45,4 +47,7 @@ def wrapper(module, name):
     instance.model_name = "gpt-fixture"
     instance.model = types.SimpleNamespace(device="cpu", generate=Mock(return_value=Tensor()))
     instance.pipeline = Mock(return_value=[{"generated_text": "promptcompletion"}])
+    instance.client = Mock()
+    instance.client.chat.completions.create.return_value = types.SimpleNamespace(
+        choices=[types.SimpleNamespace(message=types.SimpleNamespace(content="completion"))])
     return instance
