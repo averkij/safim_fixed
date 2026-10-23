@@ -49,7 +49,7 @@ Example (run separately for each registered model with separate outputs/cache):
 
 ```bash
 python generate.py Qwen/Qwen2.5-Coder-3B block_v2 cache-qwen.json qwen-seed0.jsonl infilling \
-  --context-limit 8192 --max-new-tokens 512 --seed 0 --post_processors truncate_block
+  --context-limit 8192 --max-new-tokens 512 --seed 0 --post_processors truncate_line_until_block
 ```
 
 This requests pretrained weight downloads and inference when run. Adapter checks
