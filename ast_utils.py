@@ -100,6 +100,11 @@ class ErrorCheckVisitor(ASTVisitor):
         super().__init__(with_ndtypes)
         self.error_cnt = 0
 
+    def on_enter(self, node):
+        if node.is_missing:
+            self.error_cnt += 1
+        return super().on_enter(node)
+
     def enter_ERROR(self, node):
         if node.text.decode("utf-8") != ";":
             self.error_cnt += 1
