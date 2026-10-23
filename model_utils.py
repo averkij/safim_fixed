@@ -305,19 +305,15 @@ class DeepseekModel(ModelWrapper):
         ).input_ids.to(self.model.device)
         input_ids_len = input_ids.shape[1]
         with torch.no_grad():
-            try:
-                generated_ids = self.model.generate(
-                    input_ids,
-                    do_sample=True,
-                    num_return_sequences=1,
-                    temperature=0.2,
-                    max_length=min(input_ids_len + self.max_new_tokens, self.max_length),
-                    top_p=0.95,
-                    logits_processor=self.logits_processor
-                )
-            except RuntimeError as e:
-                print(e)
-                return ""
+            generated_ids = self.model.generate(
+                input_ids,
+                do_sample=True,
+                num_return_sequences=1,
+                temperature=0.2,
+                max_length=min(input_ids_len + self.max_new_tokens, self.max_length),
+                top_p=0.95,
+                logits_processor=self.logits_processor
+            )
         generated_text = self.tokenizer.decode(
             generated_ids[0, input_ids_len:],
             skip_special_tokens=True
