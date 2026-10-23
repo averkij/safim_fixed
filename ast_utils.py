@@ -1,24 +1,26 @@
-from tree_sitter import Language, Parser
+import importlib
+import os
+from functools import lru_cache
+from pathlib import Path
 
-Language.build_library(
-    # Store the library in the `build` directory
-    'build/tree_sitter.so',
 
-    # Include one or more languages
-    [
-        'tree-sitter-python',
-        'tree-sitter-java',
-        'tree-sitter-cpp',
-        'tree-sitter-c-sharp'
-    ]
-)
-
-TS_LANG = {
-    "python": Language('build/tree_sitter.so', 'python'),
-    "java": Language('build/tree_sitter.so', 'java'),
-    "cpp": Language('build/tree_sitter.so', 'cpp'),
-    "csharp": Language('build/tree_sitter.so', 'c_sharp')
-}
+@lru_cache(maxsize=None)
+def get_language(lang):
+    from tree_sitter import Language
+    grammar = {"python": "python", "java": "java", "cpp": "cpp", "csharp": "c_sharp"}[lang]
+    backend = os.environ.get("SAFIM_PARSER_BACKEND", "wheels")
+    if backend == "wheels":
+        return Language(importlib.import_module("tree_sitter_" + grammar).language())
+    if backend != "legacy":
+        raise ValueError("SAFIM_PARSER_BACKEND must be wheels or legacy")
+    # Explicit baseline-compatible path; never rebuild on module import or
+    # resolve grammar paths relative to the caller's current directory.
+    root = Path(__file__).resolve().parent
+    library = root / "build" / "tree_sitter.so"
+    if not library.exists():
+        Language.build_library(str(library), [str(root / name) for name in
+            ["tree-sitter-python", "tree-sitter-java", "tree-sitter-cpp", "tree-sitter-c-sharp"]])
+    return Language(str(library), grammar)
 
 
 class ASTVisitor:
@@ -104,6 +106,10 @@ class ErrorCheckVisitor(ASTVisitor):
 
 
 def get_parser(lang):
-    parser = Parser()
-    parser.set_language(TS_LANG[lang])
-    return parser
+    from tree_sitter import Parser
+    language = get_language(lang)
+    if os.environ.get("SAFIM_PARSER_BACKEND", "wheels") == "legacy":
+        parser = Parser()
+        parser.set_language(language)
+        return parser
+    return Parser(language)

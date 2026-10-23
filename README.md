@@ -90,6 +90,14 @@ conda install -n [ENV_NAME] libstdcxx-ng=12.2.0 -c conda-forge
 ```
 Build Tree-Sitter parsers:
 
+The fixed benchmark defaults to the pinned wheel profile in
+`requirements-parser.txt` (install with `python -m pip install -r requirements-parser.txt`).
+Parser imports are lazy and independent of the working directory. These grammar
+versions differ from the historical sources: record the profile and hold it fixed
+in paired comparisons. For historical grammar reproduction, use an isolated
+tree-sitter 0.20.4 environment, run the setup script below, and explicitly set
+`SAFIM_PARSER_BACKEND=legacy`. Modern and legacy profiles must not be conflated.
+
 ```bash
 bash setup_tree_sitter.bash
 ```
