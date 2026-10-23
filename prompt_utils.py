@@ -676,16 +676,33 @@ def truncate_control(sample, completion):
         return completion
 
 
-def truncate_api_call(completion):
-    depth = 0
-    for i, ch in enumerate(completion):
-        if ch == "(":
-            depth += 1
-        elif ch == ")":
-            depth -= 1
-            if depth <= 0:
-                return completion[:i + 1]
-    return completion
+def truncate_api_call(completion, lang="python"):
+    """Retain the leading complete expression, including chained calls.
+
+    Parse in expression context for each language. Syntax nodes respect quoted
+    parentheses, escaped strings, subscriptions and member/call chains.
+    """
+    wrappers = {
+        "python": ("", ""),
+        "cpp": ("auto __safim_value = ", ";"),
+        "java": ("class __Safim { Object value = ", "; }"),
+        "csharp": ("class __Safim { object value = ", "; }"),
+    }
+    prefix, suffix = wrappers[lang]
+    raw = completion.encode("utf-8")
+    offset = len(prefix.encode("utf-8"))
+    start = offset + len(completion[:len(completion) - len(completion.lstrip())].encode("utf-8"))
+    tree = get_parser(lang).parse(prefix.encode("utf-8") + raw + suffix.encode("utf-8"))
+    stack, ends = [tree.root_node], []
+    python_expressions = {"call", "attribute", "subscript", "binary_operator", "boolean_operator",
+                          "conditional_expression", "comparison_operator", "unary_operator"}
+    while stack:
+        node = stack.pop()
+        expression = node.type in python_expressions or node.type.endswith("_expression") or node.type in {"method_invocation", "field_access", "array_access"}
+        if expression and node.start_byte == start and node.end_byte <= offset + len(raw) and not node.has_error:
+            ends.append(node.end_byte - offset)
+        stack.extend(node.children)
+    return raw[:max(ends)].decode("utf-8") if ends else completion
 
 
 def apply_prompt(
@@ -735,7 +752,7 @@ def apply_postprocessors(
         elif post_processor == "truncate_control":
             completion = truncate_control(sample, completion)
         elif post_processor == "truncate_api_call":
-            completion = truncate_api_call(completion)
+            completion = truncate_api_call(completion, sample["lang"])
         else:
             raise ValueError(post_processor)
     return completion
