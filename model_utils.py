@@ -1,4 +1,7 @@
 import os
+import hashlib
+import json
+from pathlib import Path
 from argparse import Namespace
 
 import openai
@@ -14,9 +17,25 @@ class ModelWrapper:
         raise NotImplementedError()
 
     def invoke_cached(self, prompt: str, cache: dict) -> str:
-        if prompt not in cache:
-            cache[prompt] = self.invoke(prompt)
-        return cache[prompt]
+        identity = {
+            "protocol": 2,
+            "wrapper": type(self).__name__,
+            "model": getattr(self, "model_name", None),
+            "configuration": getattr(self, "cache_configuration", {}),
+            "max_new_tokens": self.max_new_tokens,
+            "context_limit": getattr(self, "max_length", None),
+            "prompt": prompt,
+        }
+        key = "safim-v2:" + hashlib.sha256(json.dumps(
+            identity, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+        if key not in cache:
+            answer = self.invoke(prompt)
+            if not isinstance(answer, str):
+                raise TypeError("Generation must return text")
+            cache[key] = answer
+        if not isinstance(cache[key], str):
+            raise ValueError("Cached completion must be text")
+        return cache[key]
 
     def assemble_completion_prompt(self, prompt: str) -> str:
         return prompt
@@ -619,4 +638,19 @@ def build_model(args: Namespace) -> ModelWrapper:
     else:
         raise ValueError(args.model_name)
     model_wrapper.max_new_tokens = max_new_tokens
+    model_wrapper.model_name = args.model_name
+    # Conservative identity: changed protocol/code/configuration never reuses a
+    # completion from another model or experiment. Old prompt-only keys miss.
+    excluded = {"cache_path", "output_path", "checkpoint_every"}
+    model_wrapper.cache_configuration = {key: value for key, value in vars(args).items()
+                                         if key not in excluded}
+    model_wrapper.cache_configuration["wrapper_sha256"] = hashlib.sha256(
+        Path(__file__).read_bytes()).hexdigest()
+    tokenizer_config = getattr(getattr(model_wrapper, "tokenizer", None), "init_kwargs", {})
+    if isinstance(tokenizer_config, dict):
+        model_wrapper.cache_configuration["resolved_tokenizer_revision"] = tokenizer_config.get("_commit_hash")
+    model_config = getattr(getattr(model_wrapper, "model", None), "config", None)
+    revision = getattr(model_config, "_commit_hash", None)
+    if isinstance(revision, str):
+        model_wrapper.cache_configuration["resolved_model_revision"] = revision
     return model_wrapper

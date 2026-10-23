@@ -34,6 +34,8 @@ def load_models():
     dependencies["openai"].OpenAI = Mock()
     dependencies["tiktoken"].encoding_for_model = Mock(return_value=Tokenizer())
     module = types.ModuleType("models_under_test")
+    from pathlib import Path
+    module.__file__ = str(Path(__file__).resolve().parents[1] / "model_utils.py")
     with patch.dict(sys.modules, dependencies):
         exec(compile(source_at("model_utils.py"), "model_utils.py", "exec"), module.__dict__)
     return module

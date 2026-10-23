@@ -26,6 +26,12 @@ score increase. Context-window handling can further limit output and must also
 be controlled. Failed/interrupted generation returns nonzero and preserves
 completed JSONL rows; a `.run.json` status other than `complete` is not a full run.
 
+Raw completion cache keys include the model, wrapper source hash, generation
+configuration, available resolved revisions, context limit, output cap and prompt.
+Legacy prompt-only entries are retained but never reused. Switching settings or
+models in the same cache therefore triggers fresh inference. Use immutable model
+revisions: a remote alias can change without exposing a revision to the client.
+
 The remote wrapper uses the OpenAI 2.x client with explicit temperature 0.2,
 top-p 0.95 and `max_completion_tokens`. `OPENAI_API_KEY` is read by the SDK.
 `--api-timeout` defaults to 120 seconds per attempt and `--api-max-retries` to 2.
