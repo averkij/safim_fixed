@@ -561,7 +561,22 @@ def truncate_for_fewshot(code):
     return code
 
 
+def has_unparsable_context(sample):
+    """A parser cannot safely trim a hole in context it cannot parse itself.
+
+    C++ macros are a common example: the compiler expands them, Tree-sitter
+    does not. Preserve raw output in this case and let execution judge it.
+    """
+    placeholder = "pass" if sample["lang"] == "python" else ""
+    baseline = sample["eval_prompt"].replace("{{completion}}", placeholder)
+    visitor = ErrorCheckVisitor()
+    visitor(get_parser(sample["lang"]).parse(baseline.encode("utf-8")))
+    return visitor.error_cnt > 0
+
+
 def truncate_line_until_parsable(sample, code):
+    if has_unparsable_context(sample):
+        return code
     parser = get_parser(sample["lang"])
     lines = code.splitlines(keepends=True)
     while lines:
@@ -594,6 +609,8 @@ def match_prefix_and_suffix(l1, l2):
 
 
 def truncate_line_until_block(sample, code):
+    if has_unparsable_context(sample):
+        return code
     parser = get_parser(sample["lang"])
     lines = code.splitlines(keepends=True)
     while lines:
