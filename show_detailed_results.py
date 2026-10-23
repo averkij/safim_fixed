@@ -33,8 +33,10 @@ def main():
                     r_set.add(r['result'])
             else:
                 for rr in r['result']:
-                    if rr["exec_outcome"] != "PASSED":
+                    if rr["exec_outcome"] not in ("PASSED", None):
                         r_set.add(rr["exec_outcome"])
+            if not r_set:
+                raise ValueError(f"Failed result has no executed failure: {r['task_id']}")
             if len(r_set) > 1:
                 results_cnt["MIXED"] += 1
             else:
