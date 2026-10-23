@@ -32,6 +32,14 @@ Legacy prompt-only entries are retained but never reused. Switching settings or
 models in the same cache therefore triggers fresh inference. Use immutable model
 revisions: a remote alias can change without exposing a revision to the client.
 
+`--seed` defaults to 0. A stable SHA256-derived seed for each prompt is applied
+before uncached inference, so cache hits and task order do not shift other tasks'
+random draws. The same seed is sent to the remote API. This changes the formerly
+unseeded generation protocol. Record several independent base seeds to measure
+sampling variability; one seed is not an uncertainty estimate. GPU kernels,
+dependency/hardware changes and remote service behavior can still prevent exact
+repeatability. Cache reuse is not an independent replicate.
+
 FIM prompts reserve the requested output budget and retain the model's marker
 sequence. If necessary, context is removed from the beginning of the prefix and
 the end of the suffix, reducing the longer character span by one eighth per

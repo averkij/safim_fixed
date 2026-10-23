@@ -12,7 +12,7 @@ class RemoteGenerationTests(unittest.TestCase):
         call = model.client.chat.completions.create.call_args
         self.assertIsNotNone(call)
         self.assertEqual(call.kwargs, dict(model="gpt-fixture", max_completion_tokens=256,
-            temperature=0.2, top_p=0.95, messages=[dict(role="user", content="prompt")]))
+            temperature=0.2, top_p=0.95, seed=0, messages=[dict(role="user", content="prompt")]))
 
     def test_failed_request_propagates_without_cache_entry(self):
         model = wrapper(load_models(), "OpenAIModel")

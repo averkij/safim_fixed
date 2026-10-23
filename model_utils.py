@@ -13,6 +13,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, NoBadWordsLogitsPr
 
 class ModelWrapper:
     max_new_tokens = 128
+    seed = 0
 
     def count_prompt_tokens(self, prompt):
         return len(self.tokenizer.encode(prompt, add_special_tokens=True))
@@ -54,11 +55,18 @@ class ModelWrapper:
             "configuration": getattr(self, "cache_configuration", {}),
             "max_new_tokens": self.max_new_tokens,
             "context_limit": getattr(self, "max_length", None),
+            "seed": self.seed,
             "prompt": prompt,
         }
         key = "safim-v2:" + hashlib.sha256(json.dumps(
             identity, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
         if key not in cache:
+            # Per-prompt seeding makes cache hits and dataset iteration order
+            # irrelevant to the RNG stream used for this completion.
+            self.request_seed = int.from_bytes(hashlib.sha256(
+                json.dumps([self.seed, prompt], ensure_ascii=False).encode("utf-8")
+            ).digest()[:4], "big") % (2 ** 31)
+            transformers.set_seed(self.request_seed)
             answer = self.invoke(prompt)
             if not isinstance(answer, str):
                 raise TypeError("Generation must return text")
@@ -207,6 +215,7 @@ class OpenAIModel(ModelWrapper):
             temperature=0.2,
             top_p=0.95,
             messages=[{"role": "user", "content": prompt}],
+            seed=getattr(self, "request_seed", self.seed),
         )
         content = result.choices[0].message.content
         if not isinstance(content, str):
@@ -679,6 +688,7 @@ def build_model(args: Namespace) -> ModelWrapper:
     else:
         raise ValueError(args.model_name)
     model_wrapper.max_new_tokens = max_new_tokens
+    model_wrapper.seed = getattr(args, "seed", 0)
     model_wrapper.model_name = args.model_name
     # Conservative identity: changed protocol/code/configuration never reuses a
     # completion from another model or experiment. Old prompt-only keys miss.

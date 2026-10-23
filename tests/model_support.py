@@ -30,6 +30,7 @@ class Tokenizer:
 def load_models():
     dependencies = {name: types.ModuleType(name) for name in ["torch", "transformers", "openai", "tiktoken"]}
     dependencies["torch"].no_grad = contextlib.nullcontext
+    dependencies["transformers"].set_seed = Mock()
     for name in ["AutoModelForCausalLM", "AutoTokenizer", "NoBadWordsLogitsProcessor"]:
         setattr(dependencies["transformers"], name, Mock())
     dependencies["openai"].ChatCompletion = types.SimpleNamespace(create=Mock(return_value={"choices": [{"message": {"content": "completion"}}]}))

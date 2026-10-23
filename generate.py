@@ -39,6 +39,7 @@ def main():
     parser.add_argument("output_path", type=str)
     parser.add_argument("mode", type=str)
     parser.add_argument("--block_comments", action="store_true")
+    parser.add_argument("--seed", type=int, default=0, help="Base seed; each prompt gets a stable derived seed")
     parser.add_argument("--post_processors", type=str, nargs="+")
     parser.add_argument("--max-new-tokens", type=int, default=128, help="Requested output token cap (historical default: 128)")
     parser.add_argument("--api-timeout", type=float, default=120.0, help="Remote request timeout in seconds per attempt")
