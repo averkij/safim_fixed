@@ -382,7 +382,7 @@ import org.json.JSONObject;
 
 public class Example {
     public static void main(String[] args) {
-        String jsonData = "{\"name\":\"John\", \"age\":30}";
+        String jsonData = "{\\\"name\\\":\\\"John\\\", \\\"age\\\":30}";
         JSONObject obj = /* TODO: Your code here */;
 
         String name = obj.getString("name");
@@ -408,7 +408,7 @@ using json = nlohmann::json;
 
 int main() {
     // JSON data
-    std::string jsonData = "{\"name\":\"John\", \"age\":30}";
+    std::string jsonData = "{\\\"name\\\":\\\"John\\\", \\\"age\\\":30}";
 
     // Parse JSON data
     json j = /* TODO: Your code here */;
@@ -436,7 +436,7 @@ class Program
 {
     static void Main()
     {
-        string jsonData = "{\"name\":\"John\", \"age\":30}";
+        string jsonData = "{\\\"name\\\":\\\"John\\\", \\\"age\\\":30}";
         JObject jObject = /* TODO: Your code here */;
 
         string name = (string)jObject["name"];
