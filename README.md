@@ -47,6 +47,14 @@ its decimal digits do not express statistical confidence. Scores are empirical
 pass@1 with one completion per task. Report independent seed replicates and
 paired task outcomes when comparing model differences.
 
+Use `block_v2` for newer block tasks. `control` and `control_fixed` are distinct
+protocols: Python's header colon belongs to the answer in `control`, to the suffix
+in `control_fixed`. Both have explicit prompt/few-shot support; do not pool their
+scores. With `truncate_control`, a duplicate trailing colon is removed only for
+the fixed variant when its evaluation suffix already supplies one. Evaluation
+rejects a conflicting variant declared in a prediction `.run.json`; legacy files
+without metadata still require the researcher to supply the correct variant.
+
 FIM prompts reserve the requested output budget and retain the model's marker
 sequence. If necessary, context is removed from the beginning of the prefix and
 the end of the suffix, reducing the longer character span by one eighth per

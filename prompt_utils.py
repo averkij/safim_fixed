@@ -460,9 +460,20 @@ PREFIX_FEEDING_TEMPLATE = jinja2.Template(
 
 COMPLETION_TYPE_REPR = {
     "block": "block",
+    "block_v2": "block",
     "control": "control expression",
+    "control_fixed": "control expression",
     "api": "API function call"
 }
+
+for _lang in COMPLETION_PLACEHOLDER:
+    FEW_SHOT_PROMPTS[("block_v2", _lang)] = FEW_SHOT_PROMPTS[("block", _lang)]
+    FEW_SHOT_ANSWERS[("block_v2", _lang)] = FEW_SHOT_ANSWERS[("block", _lang)]
+    FEW_SHOT_PROMPTS[("control_fixed", _lang)] = FEW_SHOT_PROMPTS[("control", _lang)]
+    FEW_SHOT_ANSWERS[("control_fixed", _lang)] = FEW_SHOT_ANSWERS[("control", _lang)]
+FEW_SHOT_PROMPTS[("control_fixed", "python")] = FEW_SHOT_PROMPTS[("control", "python")].replace(
+    "for # TODO: Your code here\n", "for # TODO: Your code here:\n")
+FEW_SHOT_ANSWERS[("control_fixed", "python")] = FEW_SHOT_ANSWERS[("control", "python")].rstrip().removesuffix(":") + "\n"
 
 
 def get_infilling_parts(sample):
@@ -661,9 +672,13 @@ def truncate_line_until_block(sample, code):
     return "".join(lines)
 
 
-def truncate_control(sample, completion):
+def truncate_control(sample, completion, completion_type=None):
     if sample["lang"] == "python":
-        return truncate_to_first_line(completion)
+        line = truncate_to_first_line(completion)
+        # Only the fixed variant owns the header colon in its suffix.
+        if completion_type == "control_fixed" and sample.get("eval_prompt", "").split("{{completion}}")[-1].startswith(":"):
+            return re.sub(r":([ \t]*)$", r"\1", line)
+        return line
     else:
         raw = completion.encode("utf-8")
         ignored = bytearray(len(raw))
@@ -761,7 +776,7 @@ def apply_postprocessors(
         elif post_processor == "truncate_line_until_block":
             completion = truncate_line_until_block(sample, completion)
         elif post_processor == "truncate_control":
-            completion = truncate_control(sample, completion)
+            completion = truncate_control(sample, completion, completion_type)
         elif post_processor == "truncate_api_call":
             completion = truncate_api_call(completion, sample["lang"])
         else:

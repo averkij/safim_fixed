@@ -78,6 +78,15 @@ def validate_completions(rows, problems, allow_partial=False):
     return completions
 
 
+def validate_input_variant(path, completion_type):
+    metadata = Path(str(path) + ".run.json")
+    if metadata.exists():
+        run = json.loads(metadata.read_text(encoding="utf-8"))
+        declared = run.get("configuration", {}).get("completion_type")
+        if declared is not None and declared != completion_type:
+            raise ValueError(f"Predictions declare {declared}, but evaluation requests {completion_type}; dataset variants are distinct protocols")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("completion_type", type=str)
@@ -90,6 +99,7 @@ def main():
 
     problems = load_dataset(args.completion_type)
     try:
+        validate_input_variant(args.completion_path, args.completion_type)
         completions = validate_completions(stream_jsonl(args.completion_path), problems, args.allow_partial)
     except ValueError as error:
         parser.error(str(error))
