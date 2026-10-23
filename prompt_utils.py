@@ -636,48 +636,50 @@ def match_prefix_and_suffix(l1, l2):
     return p, q
 
 
+def outside_hole_signature(tree, start, end):
+    """Preserve existing tokens and their structural attachment around a hole.
+
+    Normalize suffix offsets for the changed completion length. Ancestor start
+    anchors distinguish identical-looking blocks belonging to different nodes.
+    No placeholder-node count or overlapping trace match is needed.
+    """
+    signature = []
+    stack = [(tree.root_node, ())]
+    while stack:
+        node, ancestors = stack.pop()
+        if node.start_byte < start:
+            anchor = ("prefix", node.start_byte)
+        elif node.start_byte >= end:
+            anchor = ("suffix", node.start_byte - end)
+        else:
+            anchor = ("hole",)
+        if not node.children:
+            if node.end_byte <= start or node.start_byte >= end:
+                signature.append((node.type, node.text, anchor, ancestors))
+        else:
+            path = ancestors + ((node.type, anchor),)
+            stack.extend((child, path) for child in reversed(node.children))
+    return signature
+
+
 def truncate_line_until_block(sample, code):
     if has_unparsable_context(sample, code):
         return code
     parser = get_parser(sample["lang"])
+    prefix, suffix = [part.encode("utf-8") for part in sample["eval_prompt"].split("{{completion}}")]
+    placeholder = b"pass" if sample["lang"] == "python" else b""
+    baseline = parser.parse(prefix + placeholder + suffix)
+    expected = outside_hole_signature(baseline, len(prefix), len(prefix) + len(placeholder))
     lines = code.splitlines(keepends=True)
     while lines:
-        eval_prefix, eval_suffix = sample['eval_prompt'].split("{{completion}}")
-        eval_prefix = eval_prefix.encode("utf-8")
-        eval_suffix = eval_suffix.encode("utf-8")
         completion = "".join(lines).encode("utf-8")
-        if sample["lang"] == "python":
-            code_bytes_0 = eval_prefix + b"pass" + eval_suffix
-        else:
-            code_bytes_0 = eval_prefix + eval_suffix
-        code_bytes_1 = eval_prefix + completion + eval_suffix
-
-        visitor = ErrorCheckVisitor(with_ndtypes=True)
-        tree = parser.parse(code_bytes_1)
+        tree = parser.parse(prefix + completion + suffix)
+        visitor = ErrorCheckVisitor()
         visitor(tree)
-        if visitor.error_cnt > 0:
-            lines.pop()
-            continue
-        visitor_trace_1 = [(x, y) for _, x, y in visitor.ndtypes]
-
-        visitor = ErrorCheckVisitor(with_ndtypes=True)
-        tree = parser.parse(code_bytes_0)
-        visitor(tree)
-        assert visitor.error_cnt == 0
-        visitor_trace_0 = [(x, y) for _, x, y in visitor.ndtypes]
-        if len(visitor_trace_0) > len(visitor_trace_1):
-            lines.pop()
-            continue
-
-        prefix_matched, suffix_matched = match_prefix_and_suffix(visitor_trace_0, visitor_trace_1)
-        matched_diff = len(visitor_trace_0) - (prefix_matched - suffix_matched)
-        if sample["lang"] == "python":
-            matched_diff -= 4
-        if matched_diff == 0:
-            break
-        else:
-            lines.pop()
-    return "".join(lines)
+        if not visitor.error_cnt and outside_hole_signature(tree, len(prefix), len(prefix) + len(completion)) == expected:
+            return "".join(lines)
+        lines.pop()
+    return ""
 
 
 def truncate_control(sample, completion, completion_type=None):
