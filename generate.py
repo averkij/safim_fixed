@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+from pathlib import Path
 from typing import Iterable
 
 from tqdm import tqdm
@@ -36,8 +37,13 @@ def main():
     parser.add_argument("mode", type=str)
     parser.add_argument("--block_comments", action="store_true")
     parser.add_argument("--post_processors", type=str, nargs="+")
+    parser.add_argument("--checkpoint-every", type=int, default=100, help="Atomic cache checkpoint interval; output rows flush individually")
 
     args = parser.parse_args()
+    if args.checkpoint_every < 1:
+        parser.error("--checkpoint-every must be positive")
+    if Path(args.cache_path).resolve() == Path(args.output_path).resolve():
+        parser.error("Cache and output paths must differ")
 
     if os.path.exists(args.cache_path):
         with open(args.cache_path, "r", encoding="utf-8") as f:
@@ -45,35 +51,39 @@ def main():
     else:
         cache = {}
 
-    model_wrapper = build_model(args)
+    def save_json(path, value):
+        path = Path(path)
+        temporary = path.with_suffix(path.suffix + ".tmp")
+        temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        temporary.replace(path)
 
-    outputs = []
+    manifest_path = args.output_path + ".run.json"
+    manifest = dict(status="running", completed=0, expected=None, configuration=vars(args))
+    save_json(manifest_path, manifest)
     try:
-        for sample in tqdm(load_dataset(args.completion_type)):
-            outputs.append(
-                handle_example(sample, args.completion_type, args.mode, model_wrapper, cache, args.post_processors)
-            )
-            if len(outputs) == 10:
-                for o in outputs:
-                    print("=====", o["task_id"], "=====")
-                    print(o["completion"])
-                    print("====================")
-                    print()
-            if len(outputs) % 1000 == 0:
-                with open(args.cache_path, "w", encoding="utf-8") as f:
-                    json.dump(cache, f)
-        success = True
-    except Exception as e:
-        print(e)
-        import traceback
-        traceback.print_exc()
-        success = False
-    with open(args.cache_path, "w", encoding="utf-8") as f:
-        json.dump(cache, f)
-    if success:
         with open(args.output_path, "w", encoding="utf-8") as f:
-            for item in outputs:
+            samples = load_dataset(args.completion_type)
+            manifest["expected"] = len(samples)
+            model_wrapper = build_model(args)
+            for sample in tqdm(samples):
+                manifest["active_task"] = sample["task_id"]
+                item = handle_example(sample, args.completion_type, args.mode, model_wrapper, cache, args.post_processors)
                 f.write(json.dumps(item) + "\n")
+                f.flush()
+                manifest["completed"] += 1
+                save_json(manifest_path, manifest)
+                if manifest["completed"] % args.checkpoint_every == 0:
+                    save_json(args.cache_path, cache)
+        manifest.pop("active_task", None)
+        manifest["status"] = "complete"
+    except (Exception, KeyboardInterrupt) as error:
+        manifest["status"] = "interrupted" if isinstance(error, KeyboardInterrupt) else "incomplete"
+        manifest["error_type"] = type(error).__name__
+        parser.exit(130 if isinstance(error, KeyboardInterrupt) else 1,
+                    f"Generation {manifest['status']}: {type(error).__name__}; completed rows are preserved\n")
+    finally:
+        save_json(args.cache_path, cache)
+        save_json(manifest_path, manifest)
 
 
 if __name__ == '__main__':
