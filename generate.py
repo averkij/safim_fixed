@@ -22,10 +22,13 @@ def handle_example(
     prompt = apply_prompt(sample, completion_type, mode, model_wrapper)
     completion = model_wrapper.invoke_cached(prompt, cache)
     completion = apply_postprocessors(completion, sample, completion_type, post_processors)
-    return {
+    result = {
         "task_id": sample["task_id"],
         "completion": completion
     }
+    if mode in {"infilling", "reverse_infilling"}:
+        result["context"] = model_wrapper.last_context
+    return result
 
 
 def main():

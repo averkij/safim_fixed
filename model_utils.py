@@ -13,6 +13,36 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, NoBadWordsLogitsPr
 
 class ModelWrapper:
     max_new_tokens = 128
+
+    def count_prompt_tokens(self, prompt):
+        return len(self.tokenizer.encode(prompt, add_special_tokens=True))
+
+    def check_context(self, input_tokens):
+        if input_tokens + self.max_new_tokens > self.max_length:
+            raise ValueError("Prompt plus requested output exceeds context limit; use structured FIM trimming or a larger declared context")
+
+    def fit_infilling_prompt(self, prefix, suffix, reverse=False):
+        """Keep context nearest the hole; assemble sentinels after trimming.
+
+        Trim characters (never partial Unicode bytes) from the longer side,
+        checking the actual assembled token count after each reduction.
+        """
+        original = (len(prefix), len(suffix))
+        while True:
+            prompt = self.assemble_infilling_prompt(prefix, suffix, reverse)
+            count = self.count_prompt_tokens(prompt)
+            if count + self.max_new_tokens <= self.max_length:
+                self.last_context = dict(input_tokens=count, max_new_tokens=self.max_new_tokens,
+                    context_limit=self.max_length, removed_prefix_chars=original[0] - len(prefix),
+                    removed_suffix_chars=original[1] - len(suffix))
+                return prompt
+            if not prefix and not suffix:
+                raise ValueError("FIM markers and output budget do not fit the context limit")
+            if len(prefix) >= len(suffix):
+                prefix = prefix[max(1, len(prefix) // 8):]
+            else:
+                suffix = suffix[:-max(1, len(suffix) // 8)]
+
     def invoke(self, prompt: str) -> str:
         raise NotImplementedError()
 
@@ -46,6 +76,7 @@ class ModelWrapper:
 
 class CodeLlama(ModelWrapper):
     def __init__(self, model_name, max_length, block_comments=False):
+        self.max_length = max_length
         assert model_name.startswith("codellama/CodeLlama")
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.tokenizer.model_max_length = max_length
@@ -68,6 +99,7 @@ class CodeLlama(ModelWrapper):
         )
 
     def invoke(self, prompt: str) -> str:
+        self.check_context(self.count_prompt_tokens(prompt))
         generated_text = self.pipeline(
             prompt,
             do_sample=True,
@@ -76,7 +108,6 @@ class CodeLlama(ModelWrapper):
             max_new_tokens=self.max_new_tokens,
             eos_token_id=self.tokenizer.eos_token_id,
             top_p=0.95,
-            handle_long_generation="hole",
             logits_processor=self.logits_processor
         )[0]["generated_text"]
         return generated_text[len(prompt):]
@@ -121,16 +152,17 @@ class Incoder(ModelWrapper):
 
     def invoke(self, prompt: str) -> str:
         input_ids = self.tokenizer(
-            prompt, truncation=True, return_tensors="pt"
+            prompt, truncation=False, return_tensors="pt"
         ).input_ids.to(self.model.device)
         input_ids_len = input_ids.shape[1]
+        self.check_context(input_ids_len)
         with torch.no_grad():
             generated_ids = self.model.generate(
                 input_ids,
                 do_sample=True,
                 num_return_sequences=1,
                 temperature=0.2,
-                max_length=min(input_ids_len + self.max_new_tokens, self.max_length),
+                max_new_tokens=self.max_new_tokens,
                 top_p=0.95,
                 logits_processor=self.logits_processor
             )
@@ -163,11 +195,12 @@ class OpenAIModel(ModelWrapper):
         self.tokenizer = tiktoken.encoding_for_model(model_name)
         self.client = openai.OpenAI(timeout=timeout, max_retries=max_retries)
 
+    def count_prompt_tokens(self, prompt):
+        # max_length already excludes the declared chat overhead allowance.
+        return len(self.tokenizer.encode_ordinary(prompt))
+
     def invoke(self, prompt: str) -> str:
-        tokenized = self.tokenizer.encode_ordinary(prompt)
-        if len(tokenized) > self.max_length:
-            tokenized = tokenized[-self.max_length:]
-            prompt = self.tokenizer.decode(tokenized)
+        self.check_context(self.count_prompt_tokens(prompt))
         result = self.client.chat.completions.create(
             model=self.model_name,
             max_completion_tokens=self.max_new_tokens,
@@ -216,16 +249,17 @@ class CodegenModel(ModelWrapper):
 
     def invoke(self, prompt: str) -> str:
         input_ids = self.tokenizer(
-            prompt, truncation=True, return_tensors="pt"
+            prompt, truncation=False, return_tensors="pt"
         ).input_ids.to(self.model.device)
         input_ids_len = input_ids.shape[1]
+        self.check_context(input_ids_len)
         with torch.no_grad():
             generated_ids = self.model.generate(
                 input_ids,
                 do_sample=True,
                 num_return_sequences=1,
                 temperature=0.2,
-                max_length=min(input_ids_len + self.max_new_tokens, self.max_length),
+                max_new_tokens=self.max_new_tokens,
                 pad_token_id=50256,
                 top_p=0.95,
                 use_cache=True,
@@ -269,16 +303,17 @@ class StarcoderModel(ModelWrapper):
 
     def invoke(self, prompt: str) -> str:
         input_ids = self.tokenizer(
-            prompt, truncation=True, return_tensors="pt"
+            prompt, truncation=False, return_tensors="pt"
         ).input_ids.to(self.model.device)
         input_ids_len = input_ids.shape[1]
+        self.check_context(input_ids_len)
         with torch.no_grad():
             generated_ids = self.model.generate(
                 input_ids,
                 do_sample=True,
                 num_return_sequences=1,
                 temperature=0.2,
-                max_length=min(input_ids_len + self.max_new_tokens, self.max_length),
+                max_new_tokens=self.max_new_tokens,
                 top_p=0.95,
                 logits_processor=self.logits_processor
             )
@@ -320,16 +355,17 @@ class DeepseekModel(ModelWrapper):
 
     def invoke(self, prompt: str) -> str:
         input_ids = self.tokenizer(
-            prompt, truncation=True, return_tensors="pt"
+            prompt, truncation=False, return_tensors="pt"
         ).input_ids.to(self.model.device)
         input_ids_len = input_ids.shape[1]
+        self.check_context(input_ids_len)
         with torch.no_grad():
             generated_ids = self.model.generate(
                 input_ids,
                 do_sample=True,
                 num_return_sequences=1,
                 temperature=0.2,
-                max_length=min(input_ids_len + self.max_new_tokens, self.max_length),
+                max_new_tokens=self.max_new_tokens,
                 top_p=0.95,
                 logits_processor=self.logits_processor
             )
@@ -370,16 +406,17 @@ class PhiModel(ModelWrapper):
 
     def invoke(self, prompt: str) -> str:
         input_ids = self.tokenizer(
-            prompt, truncation=True, return_attention_mask=False, return_tensors="pt"
+            prompt, truncation=False, return_attention_mask=False, return_tensors="pt"
         ).input_ids.to(self.model.device)
         input_ids_len = input_ids.shape[1]
+        self.check_context(input_ids_len)
         with torch.no_grad():
             generated_ids = self.model.generate(
                 input_ids,
                 do_sample=True,
                 num_return_sequences=1,
                 temperature=0.2,
-                max_length=min(input_ids_len + self.max_new_tokens, self.max_length),
+                max_new_tokens=self.max_new_tokens,
                 pad_token_id=50256,
                 top_p=0.95,
                 use_cache=True,
@@ -420,16 +457,17 @@ class MixtralModel(ModelWrapper):
 
     def invoke(self, prompt: str) -> str:
         input_ids = self.tokenizer(
-            prompt, truncation=True, return_attention_mask=False, return_tensors="pt"
+            prompt, truncation=False, return_attention_mask=False, return_tensors="pt"
         ).input_ids.to(self.model.device)
         input_ids_len = input_ids.shape[1]
+        self.check_context(input_ids_len)
         with torch.no_grad():
             generated_ids = self.model.generate(
                 input_ids,
                 do_sample=True,
                 num_return_sequences=1,
                 temperature=0.2,
-                max_length=min(input_ids_len + self.max_new_tokens, self.max_length),
+                max_new_tokens=self.max_new_tokens,
                 top_p=0.95,
                 use_cache=True,
                 logits_processor=self.logits_processor
@@ -474,16 +512,17 @@ class WizardModel(ModelWrapper):
 
     def invoke(self, prompt: str) -> str:
         input_ids = self.tokenizer(
-            prompt, truncation=True, return_attention_mask=False, return_tensors="pt"
+            prompt, truncation=False, return_attention_mask=False, return_tensors="pt"
         ).input_ids.to(self.model.device)
         input_ids_len = input_ids.shape[1]
+        self.check_context(input_ids_len)
         with torch.no_grad():
             generated_ids = self.model.generate(
                 input_ids,
                 do_sample=True,
                 num_return_sequences=1,
                 temperature=0.2,
-                max_length=min(input_ids_len + self.max_new_tokens, self.max_length),
+                max_new_tokens=self.max_new_tokens,
                 top_p=0.95,
                 use_cache=True,
                 logits_processor=self.logits_processor
@@ -537,16 +576,17 @@ class SantacoderModel(ModelWrapper):
 
     def invoke(self, prompt: str) -> str:
         input_ids = self.tokenizer(
-            prompt, truncation=True, return_tensors="pt"
+            prompt, truncation=False, return_tensors="pt"
         ).input_ids.to(self.model.device)
         input_ids_len = input_ids.shape[1]
+        self.check_context(input_ids_len)
         with torch.no_grad():
             generated_ids = self.model.generate(
                 input_ids,
                 do_sample=True,
                 num_return_sequences=1,
                 temperature=0.2,
-                max_length=min(input_ids_len + self.max_new_tokens, self.max_length),
+                max_new_tokens=self.max_new_tokens,
                 top_p=0.95,
                 pad_token_id=self.tokenizer.unk_token_id,
                 logits_processor=self.logits_processor
@@ -566,6 +606,7 @@ class SantacoderModel(ModelWrapper):
 
 class MagicCoderModel(ModelWrapper):
     def __init__(self, model_name, max_length, block_comments=False):
+        self.max_length = max_length
         assert model_name.startswith("ise-uiuc/Magicoder")
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.tokenizer.model_max_length = max_length
@@ -588,6 +629,7 @@ class MagicCoderModel(ModelWrapper):
         )
 
     def invoke(self, prompt: str) -> str:
+        self.check_context(self.count_prompt_tokens(prompt))
         generated_text = self.pipeline(
             prompt,
             do_sample=True,
@@ -595,7 +637,6 @@ class MagicCoderModel(ModelWrapper):
             temperature=0.2,
             max_new_tokens=self.max_new_tokens,
             top_p=0.95,
-            handle_long_generation="hole",
             logits_processor=self.logits_processor
         )[0]["generated_text"]
         return generated_text[len(prompt):]

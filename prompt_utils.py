@@ -670,10 +670,10 @@ def apply_prompt(
 ) -> str:
     if mode == "infilling":
         prefix, suffix = get_infilling_parts(sample)
-        prompt = model_wrapper.assemble_infilling_prompt(prefix, suffix, reverse=False)
+        prompt = model_wrapper.fit_infilling_prompt(prefix, suffix, reverse=False)
     elif mode == "reverse_infilling":
         prefix, suffix = get_infilling_parts(sample)
-        prompt = model_wrapper.assemble_infilling_prompt(prefix, suffix, reverse=True)
+        prompt = model_wrapper.fit_infilling_prompt(prefix, suffix, reverse=True)
     elif mode == "left_to_right":
         prompt = convert_to_l2r_prompt(sample)
     elif mode == "prefix_feeding":

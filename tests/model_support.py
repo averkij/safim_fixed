@@ -21,6 +21,8 @@ class Tokenizer:
         return types.SimpleNamespace(input_ids=Tensor())
     def encode_ordinary(self, text):
         return list(text)
+    def encode(self, text, **kwargs):
+        return list(text)
     def decode(self, *args, **kwargs):
         return "completion"
 

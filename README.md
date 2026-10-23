@@ -32,6 +32,16 @@ Legacy prompt-only entries are retained but never reused. Switching settings or
 models in the same cache therefore triggers fresh inference. Use immutable model
 revisions: a remote alias can change without exposing a revision to the client.
 
+FIM prompts reserve the requested output budget and retain the model's marker
+sequence. If necessary, context is removed from the beginning of the prefix and
+the end of the suffix, reducing the longer character span by one eighth per
+step and checking assembled token length each time. Per-row `context` metadata
+records input/output limits and removed characters. This is an explicit protocol
+change for long prompts; short prompts are unchanged. Unstructured prompts that
+exceed the declared context fail instead of silently losing instructions. Remote
+chat limits retain the historical 32-token overhead allowance; configure/use a
+model with a compatible context and treat server rejection as an incomplete run.
+
 The remote wrapper uses the OpenAI 2.x client with explicit temperature 0.2,
 top-p 0.95 and `max_completion_tokens`. `OPENAI_API_KEY` is read by the SDK.
 `--api-timeout` defaults to 120 seconds per attempt and `--api-max-retries` to 2.
