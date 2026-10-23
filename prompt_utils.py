@@ -606,18 +606,33 @@ def truncate_line_until_parsable(sample, code):
     if has_unparsable_context(sample, code):
         return code
     parser = get_parser(sample["lang"])
-    lines = code.splitlines(keepends=True)
-    while lines:
-        full_code = sample["eval_prompt"].replace("{{completion}}", "".join(lines))
-        code_bytes = full_code.encode("utf-8")
-        tree = parser.parse(code_bytes)
+    prefix, suffix = [part.encode("utf-8") for part in sample["eval_prompt"].split("{{completion}}")]
+    raw = code.encode("utf-8")
+    full_tree = parser.parse(prefix + raw + suffix)
+    for end in completion_prefix_boundaries(code, full_tree, len(prefix)):
+        tree = full_tree if end == len(raw) else parser.parse(prefix + raw[:end] + suffix)
         error_check = ErrorCheckVisitor()
         error_check(tree)
-        if error_check.error_cnt > 0:
-            lines.pop()
-        else:
-            break
-    return "".join(lines)
+        if error_check.error_cnt == 0:
+            return raw[:end].decode("utf-8")
+    return ""
+
+
+def completion_prefix_boundaries(code, tree, start):
+    """Try the full answer first, then syntax/line boundaries, longest first."""
+    raw = code.encode("utf-8")
+    yield len(raw)
+    ends, position = set(), 0
+    for line in code.splitlines(keepends=True):
+        position += len(line.encode("utf-8"))
+        ends.add(position)
+    stack = [tree.root_node]
+    while stack:
+        node = stack.pop()
+        if start < node.end_byte < start + len(raw):
+            ends.add(node.end_byte - start)
+        stack.extend(node.children)
+    yield from sorted((end for end in ends if 0 < end < len(raw)), reverse=True)
 
 
 def match_prefix_and_suffix(l1, l2):
@@ -670,15 +685,15 @@ def truncate_line_until_block(sample, code):
     placeholder = b"pass" if sample["lang"] == "python" else b""
     baseline = parser.parse(prefix + placeholder + suffix)
     expected = outside_hole_signature(baseline, len(prefix), len(prefix) + len(placeholder))
-    lines = code.splitlines(keepends=True)
-    while lines:
-        completion = "".join(lines).encode("utf-8")
-        tree = parser.parse(prefix + completion + suffix)
+    raw = code.encode("utf-8")
+    full_tree = parser.parse(prefix + raw + suffix)
+    for end in completion_prefix_boundaries(code, full_tree, len(prefix)):
+        completion = raw[:end]
+        tree = full_tree if end == len(raw) else parser.parse(prefix + completion + suffix)
         visitor = ErrorCheckVisitor()
         visitor(tree)
         if not visitor.error_cnt and outside_hole_signature(tree, len(prefix), len(prefix) + len(completion)) == expected:
-            return "".join(lines)
-        lines.pop()
+            return completion.decode("utf-8")
     return ""
 
 
