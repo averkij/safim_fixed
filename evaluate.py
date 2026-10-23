@@ -1,5 +1,6 @@
 import argparse
 import ast
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -116,6 +117,35 @@ def validate_input_variant(path, completion_type, dataset=None):
                     raise ValueError(f"Prediction/evaluation dataset identity differs: {key}")
 
 
+def apply_test_overlay(problems, path, dataset):
+    """Append independently validated tests without changing the source dataset."""
+    raw = Path(path).read_bytes()
+    overlay = json.loads(raw)
+    if overlay.get("schema_version") != 1 or dataset is None or overlay.get("dataset") != dataset:
+        raise ValueError("Test overlay requires schema 1 and the exact dataset identity")
+    additions = overlay.get("tests")
+    known = {p["task_id"] for p in problems}
+    if not isinstance(additions, dict) or not additions or set(additions) - known:
+        raise ValueError("Overlay must contain tests for known task IDs")
+    for task_id, tests in additions.items():
+        if not isinstance(tests, list) or not tests:
+            raise ValueError(f"Empty or malformed overlay tests: {task_id}")
+        for test in tests:
+            if (not isinstance(test, dict) or set(test) != {"input", "output"}
+                or not isinstance(test["input"], str) or not isinstance(test["output"], list)
+                or not test["output"] or not all(isinstance(value, str) for value in test["output"])):
+                raise ValueError(f"Malformed overlay test: {task_id}")
+    result = []
+    for problem in problems:
+        if problem["task_id"] in additions:
+            if not problem["unit_tests"]:
+                raise ValueError("Cannot change a syntax-only task to execution through a test overlay")
+            problem = {**problem, "unit_tests": problem["unit_tests"] + additions[problem["task_id"]]}
+        result.append(problem)
+    return result, dict(path=str(path), sha256=hashlib.sha256(raw).hexdigest(),
+                        task_ids=sorted(additions), added_tests=sum(map(len, additions.values())))
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("completion_type", type=str)
@@ -125,6 +155,7 @@ def main():
     parser.add_argument("--exec-timeout", type=float, default=120, help="ExecEval read timeout in seconds")
     parser.add_argument("--exec-profile", help="JSON runtime/complete resource-limit profile; saved with result metadata")
     parser.add_argument("--force-execution", action="store_true", help="Execute test-bearing tasks even for exact reference matches")
+    parser.add_argument("--test-overlay", help="Versioned additional tests; forces execution and records the overlay hash")
     parser.add_argument("--allow-partial", action="store_true", help="Score only supplied known task IDs; report a subset score")
     args = parser.parse_args()
 
@@ -132,6 +163,10 @@ def main():
     dataset = getattr(problems, "provenance", None)
     try:
         validate_input_variant(args.completion_path, args.completion_type, dataset)
+        overlay = None
+        if args.test_overlay:
+            problems, overlay = apply_test_overlay(problems, args.test_overlay, dataset)
+            args.force_execution = True
         completions = validate_completions(stream_jsonl(args.completion_path), problems, args.allow_partial)
     except ValueError as error:
         parser.error(str(error))
@@ -144,7 +179,8 @@ def main():
     manifest_path = Path(str(args.output_path) + ".run.json")
     manifest = dict(status="running", completion_type=args.completion_type, partial=args.allow_partial,
                     expected=len(problems), evaluated=0, passed=0, exec_timeout=args.exec_timeout, execution=execution_metadata,
-                    force_execution=args.force_execution, methods=dict(reference_match=0, execution=0, syntax_match=0), dataset=dataset)
+                    force_execution=args.force_execution, methods=dict(reference_match=0, execution=0, syntax_match=0), dataset=dataset,
+                    test_overlay=overlay)
     def save_manifest():
         temporary = manifest_path.with_suffix(manifest_path.suffix + ".tmp")
         temporary.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")

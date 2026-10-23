@@ -79,6 +79,15 @@ result now labels `reference_match`, `execution`, or `syntax_match`, and the run
 metadata counts them. An exact reference match alone does not verify engine
 health. API tasks without execution tests retain their syntax-matching protocol.
 
+For the separately reported augmented-test protocol, add
+`--test-overlay test_overlays/block_v2_2026_10_23.json`. It adds independently
+reasoned counterexamples to two block_v2 tasks whose original tests accept a
+no-op. The original dataset remains unchanged. Overlays require an exact input
+identity, append tests, force execution, and record their hash/affected IDs.
+Report original-test and augmented-test scores separately; the two-task overlay
+does not establish complete test coverage. The counterexamples and their oracles
+are documented in the overlay. Other datasets or revisions are rejected.
+
 FIM prompts reserve the requested output budget and retain the model's marker
 sequence. If necessary, context is removed from the beginning of the prefix and
 the end of the suffix, reducing the longer character span by one eighth per
