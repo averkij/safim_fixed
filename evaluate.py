@@ -57,20 +57,48 @@ def syntax_match(code1, code2, lang):
     return code1 == code2
 
 
+def validate_completions(rows, problems, allow_partial=False):
+    completions = {}
+    for row in rows:
+        if not isinstance(row, dict) or not isinstance(row.get("task_id"), str) or not isinstance(row.get("completion"), str):
+            raise ValueError("Each prediction requires string task_id and completion fields")
+        if row["task_id"] in completions:
+            raise ValueError(f"Duplicate prediction task_id: {row['task_id']}")
+        completions[row["task_id"]] = row
+    expected = {problem["task_id"] for problem in problems}
+    unknown = set(completions) - expected
+    if unknown:
+        raise ValueError(f"Unknown prediction task IDs: {sorted(unknown)[:5]}")
+    if not completions:
+        raise ValueError("Prediction file is empty")
+    missing = expected - set(completions)
+    if missing and not allow_partial:
+        raise ValueError(f"Missing predictions for {len(missing)} tasks; use --allow-partial to score only supplied IDs")
+    return completions
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("completion_type", type=str)
     parser.add_argument("completion_path", type=str)
     parser.add_argument("output_path", type=str)
     parser.add_argument("--port", type=int, default=5000)
+    parser.add_argument("--allow-partial", action="store_true", help="Score only supplied known task IDs; report a subset score")
     args = parser.parse_args()
 
+    problems = load_dataset(args.completion_type)
+    try:
+        completions = validate_completions(stream_jsonl(args.completion_path), problems, args.allow_partial)
+    except ValueError as error:
+        parser.error(str(error))
+    if args.allow_partial:
+        problems = [problem for problem in problems if problem["task_id"] in completions]
+        print(f"Partial evaluation: {len(problems)} supplied tasks")
     build_execeval(args)
 
-    completions = {completion["task_id"]: completion for completion in stream_jsonl(args.completion_path)}
     pass_cnt, total = 0, 0
     results = []
-    for problem in tqdm(load_dataset(args.completion_type)):
+    for problem in tqdm(problems):
         if problem["task_id"] not in completions:
             result = "EMPTY"
             passed = False
