@@ -1,6 +1,8 @@
 import argparse
 import csv
+import json
 import os
+from pathlib import Path
 import sys
 from collections import defaultdict
 
@@ -11,14 +13,34 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("completion_type", type=str)
     parser.add_argument("result_path", type=str)
+    parser.add_argument("--allow-partial", action="store_true", help="Summarize an explicitly selected subset")
     args = parser.parse_args()
 
     problems = load_dataset(args.completion_type)
     problem_to_lang = {problem["task_id"]: problem["lang"] for problem in problems}
+    rows = list(stream_jsonl(args.result_path))
+    if not rows:
+        parser.error("Result file is empty")
+    seen = set()
+    for row in rows:
+        if not isinstance(row, dict) or not isinstance(row.get("task_id"), str) or type(row.get("passed")) is not bool:
+            parser.error("Every scored result requires a task_id and a boolean passed; incomplete infrastructure rows cannot be scored")
+        if row["task_id"] in seen or row["task_id"] not in problem_to_lang:
+            parser.error(f"Duplicate or unknown result task_id: {row['task_id']}")
+        seen.add(row["task_id"])
+    if seen != set(problem_to_lang) and not args.allow_partial:
+        parser.error("Incomplete result coverage; use --allow-partial only for an intended subset")
+    run_path = Path(args.result_path + ".run.json")
+    if run_path.exists():
+        run = json.loads(run_path.read_text(encoding="utf-8"))
+        if run.get("status") != "complete" or run.get("evaluated") != len(rows) or run.get("expected") != len(rows):
+            parser.error("Evaluation run is not complete or its counts do not match the result file")
+    if seen != set(problem_to_lang):
+        print(f"Partial summary: {len(rows)} / {len(problem_to_lang)} tasks", file=sys.stderr)
 
     pass_cnt, total = defaultdict(int), defaultdict(int)
     results_cnt = defaultdict(int)
-    for r in stream_jsonl(args.result_path):
+    for r in rows:
         if 'passed' not in r:
             print(r)
         lang = problem_to_lang[r['task_id']]
@@ -48,7 +70,7 @@ def main():
     # writer.writerow(['C++', 'Java', 'Python', 'C#', 'All'] + ALL_OUTCOMES)
     writer.writerow(
         [os.path.splitext(os.path.basename(args.result_path))[0]]
-        + [f"{pass_cnt[lang] / total[lang] * 100:.6f}" for lang in ['cpp', 'java', 'python', 'csharp', 'all']]
+        + [f"{pass_cnt[lang] / total[lang] * 100:.6f}" if total[lang] else "NA" for lang in ['cpp', 'java', 'python', 'csharp', 'all']]
         + [str(results_cnt[outcome]) for outcome in ALL_OUTCOMES]
     )
 
