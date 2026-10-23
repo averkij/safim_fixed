@@ -1,6 +1,9 @@
 from argparse import Namespace
 from dataclasses import dataclass, field
 from enum import Enum
+import hashlib
+import json
+from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
 import requests
@@ -138,6 +141,26 @@ LANG_TO_COMPILER = {
 }
 
 execeval: APICommunication = None
+execution_profile = None
+
+
+def load_execution_profile(path):
+    if path is None:
+        return None
+    profile = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(profile, dict) or profile.get("schema_version") != 1:
+        raise ValueError("Execution profile requires schema_version=1")
+    languages = profile.get("languages")
+    fields = {"core", "data", "fsize", "sigpending", "rss", "nofile", "msgqueue", "rtprio", "stack", "cpu", "nproc", "_as", "locks"}
+    if not isinstance(languages, dict) or set(languages) != set(LANG_TO_COMPILER):
+        raise ValueError("Execution profile requires all four SAFIM languages")
+    for lang, entry in languages.items():
+        if not isinstance(entry, dict) or not isinstance(entry.get("runtime"), str) or not entry["runtime"]:
+            raise ValueError(f"Missing runtime for {lang}")
+        limits = entry.get("limits")
+        if not isinstance(limits, dict) or set(limits) != fields or any(type(value) is not int or value < -1 for value in limits.values()) or limits["cpu"] <= 0:
+            raise ValueError(f"Provide complete integer resource limits for {lang}; partial limits bypass engine language defaults")
+    return profile
 
 
 def run_test(problem, completion):
@@ -145,7 +168,9 @@ def run_test(problem, completion):
     assert problem['task_id'] == completion['task_id']
     code = problem['eval_prompt'].replace("{{completion}}", completion['completion'])
     result = execeval.execute_code(
-        LANG_TO_COMPILER[problem['lang']], code, problem['unit_tests'], task_id=problem['task_id']
+        execution_profile["languages"][problem["lang"]]["runtime"] if execution_profile else LANG_TO_COMPILER[problem['lang']],
+        code, problem['unit_tests'], task_id=problem['task_id'],
+        limits=execution_profile["languages"][problem["lang"]]["limits"] if execution_profile else None,
     )[0]
     for o in result:
         if o.get('result') is not None and len(o['result']) > 1000:
@@ -154,5 +179,14 @@ def run_test(problem, completion):
 
 
 def build_execeval(args: Namespace):
-    global execeval
-    execeval = APICommunication(server_url=f"http://localhost:{args.port}", timeout=getattr(args, "exec_timeout", 120))
+    global execeval, execution_profile
+    path = getattr(args, "exec_profile", None)
+    execution_profile = load_execution_profile(path)
+    server_url = f"http://localhost:{args.port}"
+    timeout = getattr(args, "exec_timeout", 120)
+    execeval = APICommunication(server_url=server_url, timeout=timeout)
+    return dict(server_url=server_url, request_timeout=dict(connect=5, read=timeout),
+                runtime_mapping=LANG_TO_COMPILER if not execution_profile else {lang: entry["runtime"] for lang, entry in execution_profile["languages"].items()},
+                resource_limits="server defaults, not captured" if not execution_profile else "explicit profile",
+                profile=execution_profile, profile_sha256=hashlib.sha256(Path(path).read_bytes()).hexdigest() if path else None,
+                profile_verified_against_server=False)

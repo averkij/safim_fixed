@@ -55,6 +55,16 @@ the fixed variant when its evaluation suffix already supplies one. Evaluation
 rejects a conflicting variant declared in a prediction `.run.json`; legacy files
 without metadata still require the researcher to supply the correct variant.
 
+Evaluation accepts `--exec-profile profile.json` with schema_version 1 and all
+four language entries (`cpp`, `java`, `python`, `csharp`), each declaring a runtime
+and complete ExecEval resource limits. Partial limit objects are rejected because
+this engine bypasses language defaults whenever a limits object is supplied.
+The profile/hash, runtime mapping and request timeout are saved in `.run.json`.
+Without a profile, historical server defaults remain in use and metadata labels
+them as uncaptured. Capture actual image/compiler/runtime/configuration versions
+for comparisons: a runtime label is not a version check, and profile provenance
+is a declaration rather than automatic attestation of a remote server.
+
 FIM prompts reserve the requested output budget and retain the model's marker
 sequence. If necessary, context is removed from the beginning of the prefix and
 the end of the suffix, reducing the longer character span by one eighth per

@@ -118,6 +118,7 @@ def main():
     parser.add_argument("output_path", type=str)
     parser.add_argument("--port", type=int, default=5000)
     parser.add_argument("--exec-timeout", type=float, default=120, help="ExecEval read timeout in seconds")
+    parser.add_argument("--exec-profile", help="JSON runtime/complete resource-limit profile; saved with result metadata")
     parser.add_argument("--allow-partial", action="store_true", help="Score only supplied known task IDs; report a subset score")
     args = parser.parse_args()
 
@@ -130,12 +131,12 @@ def main():
     if args.allow_partial:
         problems = [problem for problem in problems if problem["task_id"] in completions]
         print(f"Partial evaluation: {len(problems)} supplied tasks")
-    build_execeval(args)
+    execution_metadata = build_execeval(args)
 
     pass_cnt, total = 0, 0
     manifest_path = Path(str(args.output_path) + ".run.json")
     manifest = dict(status="running", completion_type=args.completion_type, partial=args.allow_partial,
-                    expected=len(problems), evaluated=0, passed=0, exec_timeout=args.exec_timeout)
+                    expected=len(problems), evaluated=0, passed=0, exec_timeout=args.exec_timeout, execution=execution_metadata)
     def save_manifest():
         temporary = manifest_path.with_suffix(manifest_path.suffix + ".tmp")
         temporary.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
