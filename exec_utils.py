@@ -92,13 +92,12 @@ class APICommunication:
             stop_on_first_fail=stop_on_first_fail,
             use_sanitizer=use_sanitizer, )
         try:
-            json_response = self._session.post(
-                self.execute_code_url, json=request_body, headers={"Content-Type": "application/json"}, ).json()
-        except requests.exceptions.JSONDecodeError:
-            json_response = {
-                "task_id": task_id,
-                "data": [{"exec_outcome": "COMPILATION_ERROR", "result": "", "passed": False}]
-            }
+            response = self._session.post(
+                self.execute_code_url, json=request_body, headers={"Content-Type": "application/json"}, timeout=120)
+            response.raise_for_status()
+            json_response = response.json()
+        except (requests.RequestException, ValueError):
+            return {"error": "INFRASTRUCTURE_ERROR"}, sample_id, task_id
 
         if "data" not in json_response:
             return json_response, sample_id, task_id
@@ -111,18 +110,28 @@ LANG_TO_COMPILER = {
 }
 
 execeval: APICommunication = None
+docker_runner = None
 
 
 def run_test(problem, completion):
     global execeval
     assert problem['task_id'] == completion['task_id']
     code = problem['eval_prompt'].replace("{{completion}}", completion['completion'])
+    if problem.get("schema_version") in (1, 2):
+        from safim_v3.runner import InfrastructureError, passed
+        if docker_runner is None:
+            raise ValueError("SAFIM v3 requires --runtimes with a pinned Docker registry")
+        try:
+            outcomes = docker_runner.run(code, problem['runtime'], problem['unit_tests'], problem.get('limits'))
+        except InfrastructureError:
+            return "INFRASTRUCTURE_ERROR", False
+        return [{"exec_outcome": r["outcome"], "result": r["stdout"][:1000]} for r in outcomes], passed(outcomes)
     result = execeval.execute_code(
         LANG_TO_COMPILER[problem['lang']], code, problem['unit_tests'], task_id=problem['task_id']
     )[0]
-    if not (isinstance(result, list) and isinstance(result[0], dict)):
+    if not (isinstance(result, list) and result and isinstance(result[0], dict)):
         print(result)
-        return "COMPILATION_ERROR", False
+        return "INFRASTRUCTURE_ERROR", False
     for o in result:
         if o['result'] is not None and len(o['result']) > 1000:
             o['result'] = o['result'][:1000]
@@ -130,5 +139,9 @@ def run_test(problem, completion):
 
 
 def build_execeval(args: Namespace):
-    global execeval
+    global execeval, docker_runner
     execeval = APICommunication(server_url=f"http://localhost:{args.port}")
+    docker_runner = None
+    if getattr(args, 'runtimes', None):
+        from safim_v3.runner import DockerRunner
+        docker_runner = DockerRunner(args.runtimes)

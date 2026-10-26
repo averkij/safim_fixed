@@ -6,12 +6,12 @@ import re
 import tqdm
 from tqdm import tqdm
 
-from ast_utils import ErrorCheckVisitor, get_parser
-from data_utils import load_dataset, stream_jsonl
+from data_utils import add_dataset_arguments, load_dataset, stream_jsonl
 from exec_utils import build_execeval, run_test
 
 
 def check_syntax(code):
+    from ast_utils import ErrorCheckVisitor, get_parser
     parser = get_parser("python")
     code_bytes = code.encode("utf-8")
     tree = parser.parse(code_bytes)
@@ -54,6 +54,7 @@ def main():
     parser.add_argument("completion_path", type=str)
     parser.add_argument("output_path", type=str)
     parser.add_argument("--port", type=int, default=5000)
+    add_dataset_arguments(parser)
     args = parser.parse_args()
 
     build_execeval(args)
@@ -61,14 +62,17 @@ def main():
     completions = {completion["task_id"]: completion for completion in stream_jsonl(args.completion_path)}
     pass_cnt, total = 0, 0
     results = []
-    for problem in tqdm(load_dataset(args.completion_type)):
+    for problem in tqdm(load_dataset(args.completion_type, args)):
+        if problem.get("schema_version") in (1, 2) and not problem.get("unit_tests"):
+            raise ValueError("SAFIM v3 requires nonempty executable tests for every item")
+        completion = completions.get(problem["task_id"], {"task_id": problem["task_id"], "completion": ""})
         if problem["task_id"] not in completions:
             result = "EMPTY"
             passed = False
         else:
             completion = completions[problem["task_id"]]
             if "unit_tests" in problem and problem["unit_tests"]:
-                if completion['completion'] == problem["ground_truth"]:
+                if completion['completion'] == problem["ground_truth"] and problem.get("schema_version") not in (1, 2):
                     result = "PASSED"
                     passed = True
                 else:
@@ -82,7 +86,7 @@ def main():
                     passed = False
         if not completion['completion'].strip() and not passed:
             result = "EMPTY"
-        if problem["lang"] == "python" and not passed:
+        if problem["lang"] == "python" and not passed and result != "INFRASTRUCTURE_ERROR" and problem.get("schema_version") not in (1, 2):
             full_code = problem['eval_prompt'].replace("{{completion}}", completion['completion'])
             if "unit_tests" in problem and not check_syntax(full_code):
                 result = "COMPILATION_ERROR"
@@ -95,7 +99,10 @@ def main():
         )
 
     print(f"Pass {pass_cnt} / Total {total}")
-    print(f"Pass@1: {pass_cnt / total * 100 :.04f}%")
+    print(f"Pass@1: {pass_cnt / total * 100 if total else 0 :.04f}%")
+    infrastructure_count = sum(r['result'] == 'INFRASTRUCTURE_ERROR' for r in results)
+    if infrastructure_count:
+        print(f"PROVISIONAL: {infrastructure_count} infrastructure failures require reruns; use detailed reporting for valid-item metrics.")
     with open(args.output_path, "w", encoding="utf-8") as f:
         for r in results:
             f.write(json.dumps(r) + "\n")

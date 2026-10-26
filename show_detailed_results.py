@@ -4,16 +4,22 @@ import os
 import sys
 from collections import defaultdict
 
-from data_utils import load_dataset, stream_jsonl
+from data_utils import add_dataset_arguments, load_dataset, stream_jsonl
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("completion_type", type=str)
     parser.add_argument("result_path", type=str)
+    add_dataset_arguments(parser)
     args = parser.parse_args()
 
-    problems = load_dataset(args.completion_type)
+    problems = load_dataset(args.completion_type, args)
+    if problems and problems[0].get("schema_version") in (1, 2):
+        import json
+        from safim_v3.metrics import summarize
+        print(json.dumps(summarize(problems, list(stream_jsonl(args.result_path))), indent=2))
+        return
     problem_to_lang = {problem["task_id"]: problem["lang"] for problem in problems}
 
     pass_cnt, total = defaultdict(int), defaultdict(int)
@@ -46,7 +52,7 @@ def main():
     # writer.writerow(['C++', 'Java', 'Python', 'C#', 'All'] + ALL_OUTCOMES)
     writer.writerow(
         [os.path.splitext(os.path.basename(args.result_path))[0]]
-        + [f"{pass_cnt[lang] / total[lang] * 100:.6f}" for lang in ['cpp', 'java', 'python', 'csharp', 'all']]
+        + [f"{pass_cnt[lang] / total[lang] * 100:.6f}" if total[lang] else "NA" for lang in ['cpp', 'java', 'python', 'csharp', 'all']]
         + [str(results_cnt[outcome]) for outcome in ALL_OUTCOMES]
     )
 

@@ -1,11 +1,13 @@
 import argparse
 import json
 import os
+import hashlib
+from datetime import datetime, timezone
 from typing import Iterable
 
 from tqdm import tqdm
 
-from data_utils import load_dataset
+from data_utils import add_dataset_arguments, load_dataset
 from model_utils import ModelWrapper, build_model
 from prompt_utils import apply_postprocessors, apply_prompt
 
@@ -36,6 +38,7 @@ def main():
     parser.add_argument("mode", type=str)
     parser.add_argument("--block_comments", action="store_true")
     parser.add_argument("--post_processors", type=str, nargs="+")
+    add_dataset_arguments(parser)
 
     args = parser.parse_args()
 
@@ -48,8 +51,9 @@ def main():
     model_wrapper = build_model(args)
 
     outputs = []
+    samples = load_dataset(args.completion_type, args)
     try:
-        for sample in tqdm(load_dataset(args.completion_type)):
+        for sample in tqdm(samples):
             outputs.append(
                 handle_example(sample, args.completion_type, args.mode, model_wrapper, cache, args.post_processors)
             )
@@ -74,6 +78,10 @@ def main():
         with open(args.output_path, "w", encoding="utf-8") as f:
             for item in outputs:
                 f.write(json.dumps(item) + "\n")
+        with open(args.output_path + ".metadata.json", "w", encoding="utf-8") as f:
+            json.dump({"arguments": vars(args), "completed_at": datetime.now(timezone.utc).isoformat(),
+                       "sample_count": len(samples), "dataset_sha256": hashlib.sha256(
+                           json.dumps(samples, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()}, f, indent=2)
 
 
 if __name__ == '__main__':

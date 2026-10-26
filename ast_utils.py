@@ -1,24 +1,6 @@
 from tree_sitter import Language, Parser
 
-Language.build_library(
-    # Store the library in the `build` directory
-    'build/tree_sitter.so',
-
-    # Include one or more languages
-    [
-        'tree-sitter-python',
-        'tree-sitter-java',
-        'tree-sitter-cpp',
-        'tree-sitter-c-sharp'
-    ]
-)
-
-TS_LANG = {
-    "python": Language('build/tree_sitter.so', 'python'),
-    "java": Language('build/tree_sitter.so', 'java'),
-    "cpp": Language('build/tree_sitter.so', 'cpp'),
-    "csharp": Language('build/tree_sitter.so', 'c_sharp')
-}
+TS_LANG = {}
 
 
 class ASTVisitor:
@@ -104,6 +86,15 @@ class ErrorCheckVisitor(ASTVisitor):
 
 
 def get_parser(lang):
+    if not hasattr(Language, 'build_library'):
+        from safim_v3.syntax import parser
+        return parser(lang)
+    if not TS_LANG:
+        # Legacy environment: compile lazily, not as a side effect of import.
+        Language.build_library('build/tree_sitter.so', [
+            'tree-sitter-python', 'tree-sitter-java', 'tree-sitter-cpp', 'tree-sitter-c-sharp'])
+        TS_LANG.update({name: Language('build/tree_sitter.so', grammar) for name, grammar in
+                        [('python', 'python'), ('java', 'java'), ('cpp', 'cpp'), ('csharp', 'c_sharp')]})
     parser = Parser()
     parser.set_language(TS_LANG[lang])
     return parser
