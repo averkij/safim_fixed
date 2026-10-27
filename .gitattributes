@@ -1,0 +1,3 @@
+# Preserve vendored execution/checker bytes and their recorded hashes.
+safim_v3/** -text
+configs/runtimes.v3.json -text

@@ -15,6 +15,11 @@ results.
 - Huggingface
   Dataset: [https://huggingface.co/datasets/gonglinyuan/safim](https://huggingface.co/datasets/gonglinyuan/safim)
 
+## SAFIM v3
+
+This branch includes the v3 loader, Docker evaluator and versioned checkers.
+See [standalone setup and commands](V3_STANDALONE.md).
+
 ## Environment Setup
 
 Python version: 3.8.12
