@@ -1,0 +1,6 @@
+# Additional v3 loading/execution dependencies. Model/parser profiles stay separate.
+huggingface-hub==0.30.2
+pyarrow==18.1.0
+beautifulsoup4==4.12.3
+requests==2.32.3
+tqdm==4.66.5

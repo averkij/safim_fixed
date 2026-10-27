@@ -18,7 +18,8 @@ results.
 ## SAFIM v3
 
 This branch supports `block_v3` and `control_v3` on the fixed benchmark harness.
-See [v3 setup, commands and branch-comparison policy](V3.md).
+See [v3 setup, commands and branch-comparison policy](V3.md) and
+[standalone clone setup](V3_STANDALONE.md).
 
 ## Environment Setup
 

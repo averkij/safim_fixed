@@ -1,0 +1,22 @@
+{
+  "source_repository": "https://github.com/averkij/safim_new_dataset",
+  "source_revision": "3c13b2aafb6f5450ab92f62d849a04ed267d05ff",
+  "dataset_repository": "averoo/safim_v3",
+  "dataset_revision": "70edeef93658085e8ab905e5688996d098b8172e",
+  "runtime_registry_source": "metadata/runtimes.json in the pinned HF dataset",
+  "files_sha256": {
+    "safim_v3/__init__.py": "3e264c9fa3820a06b3205266dfae32c559690cd6fab8d49c7c921497d3e687c8",
+    "safim_v3/hf_dataset.py": "d5266c0e4ee22eae5d0262215e64eaa496f2f57506d90eeb6328624e89d2f47d",
+    "safim_v3/runner.py": "f2abc065b11fc43ad81c713c4abe91a6cdd808670109230721f26e2ab5a9e026",
+    "safim_v3/worker.py": "7c8114cc5570d79f51df1f2c1f6ed66e85f872cf2726bdcb23732154e7f578b1",
+    "safim_v3/checkers.py": "19a9f38a27a62e417c4e43f4d38fb983a5182cf88b18e7dcc0b753a84133d366",
+    "safim_v3/storage.py": "7291d9bc330c68913857e10f2bfab68cdf27006ae33d27d9fd7bee1a1ad1891e",
+    "safim_v3/syntax.py": "beac0887c45f1b21bfcb565def01b4a3bff87cd47004277387e70e4e28f0256b",
+    "safim_v3/metrics.py": "9bd8a6c08e6677f4d5986a689228f772f44cf96d9a0fcb50fb404086ebf1dd45",
+    "safim_v3/release.py": "5b3ae630081f08e1c0dcb93688393fe63daa8b9b546c47d82bcc54a125bd288e",
+    "safim_v3/collect.py": "dda937a3d42ec1f018262fa8fb98ebc323ab14a112a32d4ccf7f2acda1cf8142",
+    "safim_v3/checker_versions/1d631dc5db873fcdc367f4fd1eb747c7deaeb3be7f9d3c24adf52a81078ce00d.py": "1d631dc5db873fcdc367f4fd1eb747c7deaeb3be7f9d3c24adf52a81078ce00d",
+    "safim_v3/checker_versions/f31e211800277931d9b4703a75fe821084c37021feeac4d9f656cfbcc1b35220.py": "f31e211800277931d9b4703a75fe821084c37021feeac4d9f656cfbcc1b35220",
+    "configs/runtimes.v3.json": "a905ab4fc1ad58c6bb726bddd13478c0ac12ea30822b9b0a1ca95adfdf26d1e1"
+  }
+}
