@@ -142,6 +142,7 @@ LANG_TO_COMPILER = {
 
 execeval: APICommunication = None
 execution_profile = None
+docker_runner = None
 
 
 def load_execution_profile(path):
@@ -167,6 +168,15 @@ def run_test(problem, completion):
     global execeval
     assert problem['task_id'] == completion['task_id']
     code = problem['eval_prompt'].replace("{{completion}}", completion['completion'])
+    if problem.get("schema_version") in (1, 2):
+        from safim_v3.runner import InfrastructureError, passed
+        if docker_runner is None:
+            raise ExecEvalError("SAFIM v3 requires --runtimes with a pinned Docker registry")
+        try:
+            outcomes = docker_runner.run(code, problem['runtime'], problem['unit_tests'], problem.get('limits'))
+        except (InfrastructureError, OSError) as error:
+            raise ExecEvalError(f"SAFIM v3 execution failed: {error}") from error
+        return [{"exec_outcome": r["outcome"], "result": r["stdout"][:1000]} for r in outcomes], passed(outcomes)
     result = execeval.execute_code(
         execution_profile["languages"][problem["lang"]]["runtime"] if execution_profile else LANG_TO_COMPILER[problem['lang']],
         code, problem['unit_tests'], task_id=problem['task_id'],
@@ -179,7 +189,27 @@ def run_test(problem, completion):
 
 
 def build_execeval(args: Namespace):
-    global execeval, execution_profile
+    global execeval, execution_profile, docker_runner
+    docker_runner = None
+    is_v3 = getattr(args, "completion_type", None) in ("block_v3", "control_v3")
+    if getattr(args, "runtimes", None) and not is_v3:
+        raise ValueError("--runtimes requires block_v3/control_v3; legacy configs use ExecEval")
+    if is_v3:
+        if getattr(args, "exec_profile", None):
+            raise ValueError("--exec-profile belongs to ExecEval; v3 uses --runtimes and per-item limits")
+        if not getattr(args, "runtimes", None):
+            raise ValueError("SAFIM v3 evaluation requires --runtimes")
+        from safim_v3.runner import DockerRunner
+        from safim_v3 import runner
+        path = Path(args.runtimes)
+        docker_runner = DockerRunner(path)
+        execeval, execution_profile = None, None
+        return dict(backend="safim_v3_docker", runtimes=docker_runner.runtimes,
+                    runtimes_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+                    runner_sha256=hashlib.sha256(Path(runner.__file__).read_bytes()).hexdigest(),
+                    worker_sha256=hashlib.sha256(Path(runner.__file__).with_name("worker.py").read_bytes()).hexdigest(),
+                    resource_limits="per-item limits from pinned dataset metadata; DockerRunner defaults for absent values",
+                    checker_policy="recorded checker SHA256; shared SAFIM v3 worker")
     path = getattr(args, "exec_profile", None)
     execution_profile = load_execution_profile(path)
     server_url = f"http://localhost:{args.port}"

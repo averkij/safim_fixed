@@ -9,7 +9,7 @@ import tqdm
 from tqdm import tqdm
 
 from ast_utils import ErrorCheckVisitor, get_parser
-from data_utils import load_dataset, stream_jsonl
+from data_utils import add_dataset_arguments, load_dataset, stream_jsonl
 from exec_utils import ExecEvalError, build_execeval, run_test
 
 
@@ -157,9 +157,13 @@ def main():
     parser.add_argument("--force-execution", action="store_true", help="Execute test-bearing tasks even for exact reference matches")
     parser.add_argument("--test-overlay", help="Versioned additional tests; forces execution and records the overlay hash")
     parser.add_argument("--allow-partial", action="store_true", help="Score only supplied known task IDs; report a subset score")
+    add_dataset_arguments(parser)
     args = parser.parse_args()
 
-    problems = load_dataset(args.completion_type)
+    problems = load_dataset(args.completion_type, args)
+    if args.completion_type in ("block_v3", "control_v3"):
+        if not problems or any(p.get("schema_version") not in (1, 2) or not p.get("unit_tests") for p in problems):
+            parser.error("SAFIM v3 requires nonempty executable tests for every selected item")
     dataset = getattr(problems, "provenance", None)
     try:
         validate_input_variant(args.completion_path, args.completion_type, dataset)
@@ -203,7 +207,7 @@ def main():
                     result = "EXACT_MATCH" if passed else "WRONG_ANSWER"
                 if not completion['completion'].strip() and not passed:
                     result = "EMPTY"
-                if problem["lang"] == "python" and not passed and completion['completion'].strip() and problem.get("unit_tests"):
+                if problem["lang"] == "python" and not passed and completion['completion'].strip() and problem.get("unit_tests") and problem.get("schema_version") not in (1, 2):
                     full_code = problem['eval_prompt'].replace("{{completion}}", completion['completion'])
                     if not check_syntax(full_code):
                         result = "COMPILATION_ERROR"

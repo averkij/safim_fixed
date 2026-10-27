@@ -16,7 +16,7 @@ class EvaluationCoverageTests(unittest.TestCase):
         module = load_evaluator(source_at("evaluate.py"))
         problems = [dict(task_id=str(i), lang="python", ground_truth="f()", unit_tests=[],
                          eval_prompt="{{completion}}") for i in range(2)]
-        module.load_dataset = lambda _: problems
+        module.load_dataset = lambda *args: problems
         module.stream_jsonl = lambda _: iter(rows)
         module.tqdm = lambda items: items
         module.build_execeval = lambda _: None

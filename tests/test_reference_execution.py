@@ -13,7 +13,7 @@ from test_api_scoring import load_evaluator
 class ReferenceExecutionTests(unittest.TestCase):
     def run_cli(self,force=False,engine_pass=False,tests=True):
         module=load_evaluator(source_at("evaluate.py"))
-        module.load_dataset=lambda _:[dict(task_id="x",lang="cpp",ground_truth="f()",eval_prompt="{{completion}}",unit_tests=[{}] if tests else [])]
+        module.load_dataset=lambda *args:[dict(task_id="x",lang="cpp",ground_truth="f()",eval_prompt="{{completion}}",unit_tests=[{}] if tests else [])]
         module.stream_jsonl=lambda _:[dict(task_id="x",completion="f()")]
         module.tqdm=lambda rows:rows
         module.build_execeval=lambda _:None

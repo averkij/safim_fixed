@@ -6,7 +6,7 @@ from pathlib import Path
 import sys
 from collections import defaultdict
 
-from data_utils import load_dataset, stream_jsonl
+from data_utils import add_dataset_arguments, load_dataset, stream_jsonl
 
 
 def metric_summary(pass_cnt, total):
@@ -29,9 +29,10 @@ def main():
     parser.add_argument("result_path", type=str)
     parser.add_argument("--allow-partial", action="store_true", help="Summarize an explicitly selected subset")
     parser.add_argument("--format", choices=["csv", "json"], default="csv", help="JSON includes exact counts and uncertainty status")
+    add_dataset_arguments(parser)
     args = parser.parse_args()
 
-    problems = load_dataset(args.completion_type)
+    problems = load_dataset(args.completion_type, args)
     problem_to_lang = {problem["task_id"]: problem["lang"] for problem in problems}
     rows = list(stream_jsonl(args.result_path))
     if not rows:
@@ -48,6 +49,9 @@ def main():
     run_path = Path(args.result_path + ".run.json")
     if run_path.exists():
         run = json.loads(run_path.read_text(encoding="utf-8"))
+        if args.completion_type in ("block_v3", "control_v3"):
+            if run.get("completion_type") != args.completion_type or run.get("dataset") != getattr(problems, "provenance", None):
+                parser.error("Result/dataset identity differs from the requested v3 snapshot")
         if run.get("status") != "complete" or run.get("evaluated") != len(rows) or run.get("expected") != len(rows):
             parser.error("Evaluation run is not complete or its counts do not match the result file")
     if seen != set(problem_to_lang):

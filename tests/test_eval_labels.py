@@ -14,7 +14,7 @@ class EvaluationLabelTests(unittest.TestCase):
     def score(self, completion, tests, execution_passed=False, lang="python"):
         module = load_evaluator(source_at("evaluate.py"))
         problem = dict(task_id="t", lang=lang, ground_truth="reference", unit_tests=tests, eval_prompt="{{completion}}")
-        module.load_dataset = lambda _: [problem]
+        module.load_dataset = lambda *args: [problem]
         module.stream_jsonl = lambda _: iter([dict(task_id="t", completion=completion)])
         module.tqdm = lambda rows: rows
         module.build_execeval = lambda _: None

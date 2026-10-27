@@ -13,7 +13,7 @@ from source_support import source_at
 class GenerationPersistenceTests(unittest.TestCase):
     def run_generation(self, error=None):
         dependencies = {}
-        for name, attributes in {"data_utils": ["load_dataset"], "model_utils": ["ModelWrapper", "build_model"],
+        for name, attributes in {"data_utils": ["load_dataset", "add_dataset_arguments"], "model_utils": ["ModelWrapper", "build_model"],
                                  "prompt_utils": ["apply_postprocessors", "apply_prompt"], "tqdm": ["tqdm"]}.items():
             dependency = types.ModuleType(name)
             for attribute in attributes:
@@ -22,7 +22,7 @@ class GenerationPersistenceTests(unittest.TestCase):
         module = types.ModuleType("generate_under_test")
         with patch.dict(sys.modules, dependencies):
             exec(compile(source_at("generate.py"), "generate.py", "exec"), module.__dict__)
-        module.load_dataset = lambda _: [dict(task_id="0"), dict(task_id="1")]
+        module.load_dataset = lambda *args: [dict(task_id="0"), dict(task_id="1")]
         module.build_model = lambda _: object()
         module.tqdm = lambda rows: rows
         def handle(sample, task, mode, model, cache, processors):

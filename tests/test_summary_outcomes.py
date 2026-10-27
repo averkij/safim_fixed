@@ -12,9 +12,10 @@ from source_support import source_at
 class SummaryOutcomeTests(unittest.TestCase):
     def summarize(self, result):
         data = types.ModuleType("data_utils")
+        data.add_dataset_arguments = lambda parser: None
         problems = [dict(task_id=lang, lang=lang) for lang in ["cpp", "java", "python", "csharp"]]
         rows = [dict(task_id=p["lang"], passed=p["lang"] != "python", result=result if p["lang"] == "python" else "PASSED") for p in problems]
-        data.load_dataset = lambda _: problems
+        data.load_dataset = lambda *args: problems
         data.stream_jsonl = lambda _: rows
         module = types.ModuleType("summary_test")
         with patch.dict(sys.modules, {"data_utils": data}):

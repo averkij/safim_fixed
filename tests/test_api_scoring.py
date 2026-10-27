@@ -18,13 +18,15 @@ def load_evaluator(source):
     dependencies = {}
     for name, attributes in {
         "ast_utils": ["ErrorCheckVisitor", "get_parser"],
-        "data_utils": ["load_dataset", "stream_jsonl"],
+        "data_utils": ["load_dataset", "stream_jsonl", "add_dataset_arguments"],
         "exec_utils": ["build_execeval", "run_test"],
         "tqdm": ["tqdm"],
     }.items():
         module = types.ModuleType(name)
         for attribute in attributes:
             setattr(module, attribute, unavailable)
+        if name == "data_utils":
+            module.add_dataset_arguments = lambda parser: None
         if name == "exec_utils":
             module.ExecEvalError = RuntimeError
         if name == "ast_utils":

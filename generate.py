@@ -6,7 +6,7 @@ from typing import Iterable
 
 from tqdm import tqdm
 
-from data_utils import load_dataset
+from data_utils import add_dataset_arguments, load_dataset
 from model_utils import ModelWrapper, build_model
 from prompt_utils import apply_postprocessors, apply_prompt
 
@@ -50,6 +50,7 @@ def main():
     parser.add_argument("--api-max-retries", type=int, default=2, help="SDK retries after the initial remote attempt")
     parser.add_argument("--checkpoint-every", type=int, default=100, help="Atomic cache checkpoint interval; output rows flush individually")
 
+    add_dataset_arguments(parser)
     args = parser.parse_args()
     if args.max_new_tokens < 1:
         parser.error("--max-new-tokens must be positive")
@@ -77,7 +78,7 @@ def main():
     save_json(manifest_path, manifest)
     try:
         with open(args.output_path, "w", encoding="utf-8") as f:
-            samples = load_dataset(args.completion_type)
+            samples = load_dataset(args.completion_type, args)
             manifest["dataset"] = getattr(samples, "provenance", None)
             manifest["expected"] = len(samples)
             model_wrapper = build_model(args)

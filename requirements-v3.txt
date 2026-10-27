@@ -1,0 +1,4 @@
+# Fixed-harness environment plus v3 Parquet and optional metadata filtering.
+-r requirements-modern.txt
+pyarrow==18.1.0
+beautifulsoup4==4.12.3

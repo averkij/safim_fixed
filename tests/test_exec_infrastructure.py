@@ -76,7 +76,7 @@ class ExecInfrastructureTests(unittest.TestCase):
     def test_failure_keeps_partial_results_and_no_score(self):
         module = load_evaluator(source_at("evaluate.py"))
         problems = [dict(task_id=str(i), lang="cpp", ground_truth="reference", unit_tests=[{}], eval_prompt="{{completion}}") for i in range(3)]
-        module.load_dataset = lambda _: problems
+        module.load_dataset = lambda *args: problems
         module.stream_jsonl = lambda _: iter([dict(task_id=str(i), completion="reference" if i == 0 else "candidate") for i in range(3)])
         module.tqdm = lambda rows: rows
         module.build_execeval = lambda _: None

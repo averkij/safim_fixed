@@ -14,7 +14,8 @@ from source_support import source_at
 class SummaryCoverageTests(unittest.TestCase):
     def summarize(self, rows, partial=False, run=None):
         data = types.ModuleType("data_utils")
-        data.load_dataset = lambda _: [dict(task_id="p", lang="python"), dict(task_id="j", lang="java")]
+        data.add_dataset_arguments = lambda parser: None
+        data.load_dataset = lambda *args: [dict(task_id="p", lang="python"), dict(task_id="j", lang="java")]
         data.stream_jsonl = lambda _: rows
         module = types.ModuleType("summary_coverage")
         with patch.dict(sys.modules, {"data_utils": data}):

@@ -7,6 +7,7 @@ from source_support import source_at
 
 def summary_module():
     dependency = types.ModuleType("data_utils")
+    dependency.add_dataset_arguments = lambda parser: None
     dependency.load_dataset = dependency.stream_jsonl = lambda _: []
     module = types.ModuleType("summary_statistics")
     with patch.dict(sys.modules, {"data_utils": dependency}):
@@ -29,7 +30,7 @@ class SummaryStatisticsTests(unittest.TestCase):
         import io
         import json
         module = summary_module()
-        module.load_dataset = lambda _: [dict(task_id="p", lang="python")]
+        module.load_dataset = lambda *args: [dict(task_id="p", lang="python")]
         module.stream_jsonl = lambda _: [dict(task_id="p", passed=True, result="PASSED")]
         stdout, stderr = io.StringIO(), io.StringIO()
         with patch.object(sys, "argv", ["summary", "block_v2", "synthetic-statistics.jsonl", "--format", "json"]), contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):

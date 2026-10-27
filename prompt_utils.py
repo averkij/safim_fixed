@@ -764,6 +764,7 @@ def apply_prompt(
     mode: str,
     model_wrapper: ModelWrapper,
 ) -> str:
+    completion_type = {"block_v3": "block", "control_v3": "control_fixed"}.get(completion_type, completion_type)
     if mode == "infilling":
         prefix, suffix = get_infilling_parts(sample)
         prompt = model_wrapper.fit_infilling_prompt(prefix, suffix, reverse=False)
@@ -789,6 +790,7 @@ def apply_postprocessors(
     completion_type: str,
     post_processors: Iterable[str]
 ) -> str:
+    completion_type = {"block_v3": "block", "control_v3": "control_fixed"}.get(completion_type, completion_type)
     if post_processors is None:
         post_processors = []
     for post_processor in post_processors:

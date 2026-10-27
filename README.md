@@ -15,6 +15,11 @@ results.
 - Huggingface
   Dataset: [https://huggingface.co/datasets/gonglinyuan/safim](https://huggingface.co/datasets/gonglinyuan/safim)
 
+## SAFIM v3
+
+This branch supports `block_v3` and `control_v3` on the fixed benchmark harness.
+See [v3 setup, commands and branch-comparison policy](V3.md).
+
 ## Environment Setup
 
 For the maintained Python 3.12 profile, create a separate virtual environment
