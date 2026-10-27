@@ -7,7 +7,7 @@ from typing import Iterable
 
 from tqdm import tqdm
 
-from data_utils import add_dataset_arguments, load_dataset
+from data_utils import dataset_sha256, add_dataset_arguments, load_dataset
 from model_utils import ModelWrapper, build_model
 from prompt_utils import apply_postprocessors, apply_prompt
 
@@ -80,8 +80,7 @@ def main():
                 f.write(json.dumps(item) + "\n")
         with open(args.output_path + ".metadata.json", "w", encoding="utf-8") as f:
             json.dump({"arguments": vars(args), "completed_at": datetime.now(timezone.utc).isoformat(),
-                       "sample_count": len(samples), "dataset_sha256": hashlib.sha256(
-                           json.dumps(samples, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()}, f, indent=2)
+                       "sample_count": len(samples), "dataset_sha256": dataset_sha256(samples)}, f, indent=2)
 
 
 if __name__ == '__main__':

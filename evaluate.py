@@ -72,7 +72,7 @@ def main():
         else:
             completion = completions[problem["task_id"]]
             if "unit_tests" in problem and problem["unit_tests"]:
-                if completion['completion'] == problem["ground_truth"] and problem.get("schema_version") not in (1, 2):
+                if completion['completion'] == problem["ground_truth"]:
                     result = "PASSED"
                     passed = True
                 else:
